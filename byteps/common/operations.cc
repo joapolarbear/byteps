@@ -22,6 +22,9 @@
 #include "global.h"
 #include "logging.h"
 
+// huhanpeng:
+#include <unistd.h>
+
 namespace byteps {
 namespace common {
 
@@ -194,6 +197,18 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 
   BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
                  << ", rank=" << BytePSGlobal::GetLocalRank();
+
+  //huhanepng: add for profiling
+  if (context.profile_flag) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+    context.start_t.push((long long)(us.count()));
+    // if (BytePSGlobal::GetRank() == 0){
+    //   std::cout << "In operations.cc,EnqueueTensor, _ts: " << context.start_t << " Size: " << sizeof(context.start_t) << std::endl;
+    // }
+  }
+
   return Status::OK();
 }
 
@@ -239,7 +254,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
                  << ", parts=" << key_list.size();
 
-  // If cpubuff is not nullptr, the tensor itself is on CPU
+  // If cpubuff is not nullprt, the tensor itself is on CPU
   // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
@@ -268,7 +283,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
-      auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
       // false means not to delete data when SArray is deleted
@@ -276,7 +290,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // cmd type
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
-      ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      BytePSGlobal::GetPS()->Wait(
+          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
     }
 
     accumulated += len;
@@ -294,6 +309,53 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
 BPSContext &GetContextFromName(const std::string &name) {
   return BytePSGlobal::GetContextFromName(name);
+}
+
+// huhanpeng: API provided for profiling communication events
+// BPSCommTime *GetComm(const std::string &name) {
+//   BPSContext &context = BytePSGlobal::GetContextFromName(name);
+//   while (true) {
+//     if (context.ready_read) break;
+//     sleep(0.1);
+//   }
+//   // lock this context, until all the infomation is retrieved
+//   std::lock_guard<std::mutex> lock(context.init_mutex);
+//   // context.ready_read = false;
+
+//   BPSCommTime *ret = new BPSCommTime;
+//   long long start_t = context.start_t;
+//   // long long end_t = context.end_t;
+//   long long dur = context.dur;
+//   *ret = {start_t, dur};
+//   // if (BytePSGlobal::GetRank() == 0){
+//   //   std::cout << "In operations.cc, GetComm, _ts: " << ret->start_t << " dur: " << dur << " CNT: " << context.cnt << std::endl;
+//   //   // std::cout << "In operations.cc, get p: " << ret << std::endl;
+//   // }
+//   return ret;
+// }
+
+BPSCommTime *GetComm(const std::string &name) {
+  BPSContext &context = BytePSGlobal::GetContextFromName(name);
+
+  if (context.profile_flag) context.profile_flag = false;
+
+  BPSCommTime *ret = new BPSCommTime;
+  long long start_t = context.start_t.front();
+  long long dur = context.dur.front();
+  context.start_t.pop();
+  context.dur.pop();
+  *ret = {start_t, dur, std::min(context.start_t.size(), context.dur.size())};
+  // if (BytePSGlobal::GetRank() == 0){
+  //   std::cout << "In operations.cc, GetComm, _ts: " << ret->start_t << " dur: " << dur << " CNT: " << context.cnt << std::endl;
+  //   // std::cout << "In operations.cc, get p: " << ret << std::endl;
+  // }
+  return ret;
+}
+void delete_point(BPSCommTime *p){
+  // if (BytePSGlobal::GetRank() == 0){
+  //   std::cout << "In operations.cc, delete p: " << p << std::endl;
+  // }
+  delete p;
 }
 
 bool IsTensorDeclared(const std::string &name) {

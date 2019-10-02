@@ -65,6 +65,10 @@ bool IsTensorDeclared(const std::string &name);
 
 BPSContext &GetContextFromName(const std::string &name);
 
+// huhanpeng
+BPSCommTime *GetComm(const std::string &name);
+void delete_point(BPSCommTime *p);
+
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);

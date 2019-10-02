@@ -28,6 +28,8 @@ from common.util import download_file
 import byteps.mxnet as bps
 import mxnet as mx
 
+import traceback
+
 if __name__ == '__main__':
     # init byteps
     bps.init()
@@ -62,5 +64,9 @@ if __name__ == '__main__':
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
 
-    # train
-    fit.fit(args, sym, data.get_rec_iter)
+    # huhanpeng: train
+    try:
+        fit.fit(args, sym, data.get_rec_iter)
+    except Exception as e:
+        traceback.print_exc()
+        print(e)

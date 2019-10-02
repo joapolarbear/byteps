@@ -20,30 +20,255 @@ from __future__ import print_function
 
 import warnings
 import mxnet as mx
-import os
 
 from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
+# huhanpeng
+from byteps.mxnet.ops import get_comm_time
+import logging
+import sys, os
+from mxnet import profiler
+import json
+
 parameter_index = 0
+
+def log(s):
+    if rank() == 0:
+        print(s)
+        sys.stdout.flush()
+
+class DAG(object):
+    # The structure of the DAG should be like this
+    #    { "FW.conv2d": {
+    #                   "out": [...],
+    #                   "in" : [...],
+    #                   "var": []
+    #                   },
+    #       ...
+    #    }
+    def __init__(self):
+        self.nodes = {}
+    def _add_arrow(self, s, e):
+        # for edge s -> e, register this information to both node s and node e
+        # Args:
+        #   s: start node name (e.g., FW.conv)
+        #   e: end node name (e.g., FW.conv)
+        # add edge s -> e for s
+        if s not in self.nodes:
+            self.nodes[s] = {"out": [], "in": []}
+        if e not in self.nodes[s]["out"]:
+            self.nodes[s]["out"].append(e) # avoid to repeatly add edges
+        # add edge s -> e for e
+        if e not in self.nodes:
+            self.nodes[e] = {"out": [], "in": []}
+        if s not in self.nodes[e]["in"]:
+            self.nodes[e]["in"].append(s)
+
+
+class Recorder(object):
+    # huhanpeng: class used to collect trace info
+    def __init__(self):
+        self.time_dict = {"traceEvents":[]}
+        self.idx_dict = {}
+        self.para_name_list = None
+        self.step_cnt = 0
+        if os.environ.get("TRACE_ON") != 'ON':
+            self._end_trace = True
+            return
+        self._end_trace = False
+        self.end_step = int(os.environ.get("TRACE_END_STEP"))\
+                    if os.environ.get("TRACE_END_STEP") \
+                    else 10
+        self.trace_path = os.environ.get("TRACE_DIR") + '/bytePS_COMM_%d.json' % self.end_step \
+                    if os.environ.get("TRACE_DIR") \
+                    else 'bytePS_COMM_%d.json' % self.end_step
+
+        """config the mxnet profile"""
+        profiler.set_config(profile_symbolic=True,
+                    profile_imperative=False,
+                    profile_memory=False,
+                    profile_api=False,
+                    # profile_process=False,
+                    aggregate_stats=False, 
+                    filename=self.trace_path)
+        profiler.set_state('run')
+        self.dag = DAG()
+
+    def add_record(self, index, _check_stop=False):
+        if self._end_trace:
+            return False
+
+        if index not in self.idx_dict:
+            self.idx_dict[index] = False
+
+        if self.idx_dict[index]:
+            if False not in self.idx_dict.values():
+                """All parameters have been recorded, end profiling"""
+                self._end_trace = True   
+                self._save()
+            return False # the communication traces of this parameter have been read
+
+        """ Since each parameter will call this function, to decide when to stop profiling,
+            we only focus on one parameter, e.g., the first parameter."""
+        if _check_stop:
+            self.step_cnt += 1
+
+        if self.step_cnt >= self.end_step:
+            if self.para_name_list is None:
+                self.para_name_list = []
+                with open(os.path.join(os.environ.get('TRACE_DIR'), 'arg_namesINpara_names.txt'), 'r') as lines:
+                    for line in lines:
+                        name = line[:-1]
+                        self.para_name_list.append(name)
+            return True
+        else:
+            return False
+  
+            
+
+    def end_trace(self):
+        return self._end_trace
+
+    def _save(self, add_events=None):
+        """save the MXNet profiling results first"""
+        profiler.set_state('stop')
+        profiler.dump()
+        """Note: open the file in append mode"""
+        with open(self.trace_path, 'r') as f:
+            mxnet_traces = json.load(f)
+        # mxnet_traces={"traceEvents":[]}
+        rst_traces = self.add_dependency(mxnet_traces)
+
+        self.time_dict["traceEvents"] += rst_traces["traceEvents"]
+        with open(self.trace_path, 'w') as f:
+            json.dump(self.time_dict, f)
+        log("Stop tracing, output trace: %s" % self.trace_path)
+        """ clear the time dict after save it"""
+        self.time_dict = None
+
+    def add_dependency(self, mxnet_traces):
+        index = 0
+        rst_traces = {"traceEvents": []}
+        while index < len(mxnet_traces["traceEvents"]):
+            trace = mxnet_traces["traceEvents"][index]
+            name = trace["name"]
+            if trace["ph"] != 'B' and trace["ph"] != 'b':
+                index += 1
+                continue
+            if "_backward_" in name: # backward nodes
+                name = name.split("_backward_")[1]
+                if name not in self.dag.nodes:
+                    index += 1
+                    continue
+                innodes = ["BW." + _n for _n in self.dag.nodes[name]["out"]]
+                name = "BW." + name
+            elif name not in dag.nodes:
+                index += 1
+                continue
+            else: # forward nodes
+                innodes = self.dag.nodes[name]["in"] + self.dag.nodes[name]["var"]
+            args = {"name": name}
+            for i, _n in enumerate(innodes):
+                args["arg%d"%i] = _n
+            trace["name"] = name
+            trace["args"] = args
+
+            while True:
+                index += 1
+                next_trace = mxnet_traces["traceEvents"][index]
+                if next_trace["ph"] == 'e' or next_trace["ph"] == 'E':
+                    break
+            if next_trace["name"] != name:
+                raise ValueError("'b/B' events must be followed with 'e/E' events!!!")
+            trace["dur"] = next_trace['ts'] - trace['ts']
+            rst_traces["traceEvents"].append(trace)
+            index += 1
+
+        return rst_traces
 
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
-    def __init__(self, optimizer):
+    def __init__(self, optimizer, sym):
         self._optimizer = optimizer
-        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
-        if self._enable_async:
-            assert int(os.getenv('DMLC_NUM_WORKER'))>1, \
-                "Async is only valid for distributed training"
-            print('BytePS: enable asynchronous training')
+        # huhanpeng: debug
+        log("This is a new DistributedOptimizer with auto profiling")
+
+        """tracing configure""" 
+        self.recorder = Recorder()
+        self._symbol = sym
+
+        # para_names = self._symbol.attr_dict().keys()
+        self.gen_dag(self._symbol.debug_str())
+
+    """huhanpeng: add to construct a DAG"""
+    def gen_dag(self, s):
+        blocks = s.split("--------------------\n")
+        index = 0
+        for i in range(1, len(blocks)):
+            prev_block = blocks[i-1]
+            var = []
+            prev_ls = prev_block.split('\n')
+            for l in prev_ls:
+                if "Variable" in l:
+                    var.append(l.split('Variable:')[1])
+            block = blocks[i]
+            ls = block.split('\n')
+            if 'Name' not in ls[0]:
+                index += 1
+                continue
+            name = ls[0].split('Name=')[1]
+            args = []
+            for l in ls:
+                if "arg[" in l:
+                    # print(l)
+                    arg_name = l.split(']=')[1].split('(')[0]
+                    if arg_name not in var:
+                        args.append(arg_name)
+            for innode in args:
+                self.recorder.dag._add_arrow(innode, name)
+            if name in self.recorder.dag.nodes:
+                self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
+            else:
+                self.recorder.dag.nodes[name] = {"out": [], "in": [], "var": ["Comm." + e for e in var]}
+            index += 1
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
 
     def create_state_multi_precision(self, index, weight):
         return self._optimizer.create_state_multi_precision(index, weight)
+
+    # huhanpeng
+    def byteps_record_comm(self, index, tensor, name):
+        # huhanpeng: can be removed
+        if self.recorder.end_trace():
+            return
+
+        '''read communication traces offline'''
+        _ts_dur_list = get_comm_time(tensor, name) 
+
+        def return_event(index, _ts, _dur):
+            if _ts == 0:
+                raise ValueError("_ts should not be 0")
+            para_name = self.recorder.para_name_list[index]
+            return {
+                    "name": "Comm." + para_name,
+                    "ts": _ts,
+                    "dur": _dur,
+                    "ph": "X",
+                    "pid": "Comm." + para_name,
+                    "args": {
+                        "name": "Comm." + para_name,
+                        "input0": "BW." + para_name
+                        }
+                    }
+        self.recorder.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
+        self.recorder.idx_dict[index] = True # avoid repeatedly read
+        # log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
+        
 
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
@@ -56,38 +281,20 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
 
-    def _do_push_pull_param(self, index, delta_weight):
-        if isinstance(index, (tuple, list)):
-            for i in range(len(index)):
-                byteps_declare_tensor(delta_weight[i], "weight_" + str(index[i]))
-                byteps_push_pull(delta_weight[i], version=0, priority=-index[i],
-                                 name="weight_" + str(index[i]), is_average=False)
-        else:
-            byteps_declare_tensor(delta_weight, "weight_" + str(index))
-            byteps_push_pull(delta_weight, version=0, priority=-index,
-                             name="weight_" + str(index), is_average=False)
+        if self.recorder.add_record(index, (True if index == 0 else False)):
+            if isinstance(index, (tuple, list)):
+                for i in range(len(index)):
+                    self.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))
+            else:
+                self.byteps_record_comm(index, grad, "gradient_" + str(index))
 
     def update(self, index, weight, grad, state):
-        if self._enable_async:
-            temp_weight = weight.copy()
-            self._optimizer.update(index, weight, grad, state)
-            # push delta weight, and pull weight back to the same tensor
-            weight.__isub__(temp_weight)
-            self._do_push_pull_param(index, weight)
-        else:
-            self._do_push_pull(index, grad)
-            self._optimizer.update(index, weight, grad, state)
+        self._do_push_pull(index, grad)
+        self._optimizer.update(index, weight, grad, state)
 
     def update_multi_precision(self, index, weight, grad, state):
-        if self._enable_async:
-            temp_weight = weight.copy()
-            self._optimizer.update_multi_precision(index, weight, grad, state)
-            # push delta weight, and pull weight back to the same tensor
-            weight.__isub__(temp_weight)
-            self._do_push_pull_param(index, weight)
-        else:
-            self._do_push_pull(index, grad)
-            self._optimizer.update_multi_precision(index, weight, grad, state)
+        self._do_push_pull(index, grad)
+        self._optimizer.update_multi_precision(index, weight, grad, state)
 
     def set_learning_rate(self, lr):
         self._optimizer.set_learning_rate(lr)
@@ -184,6 +391,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
+                # huhanpeng
+                self.byteps_record_comm(param.list_grad()[0], "gradient_" + str(i))
 
     def _init_params(self):
         tensors = []
@@ -202,3 +411,9 @@ class DistributedTrainer(mx.gluon.Trainer):
                 param_arrays[0].wait_to_read()
 
         self._params_to_init = tensors
+
+    # huhanpeng
+    def byteps_record_comm(self, tensor, name):
+        _ts, _dur = get_comm_time(tensor, name)
+        log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
+        # \TODO: how to get the name
