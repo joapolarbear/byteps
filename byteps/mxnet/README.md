@@ -1,7 +1,7 @@
 
 
 ### Modified files
-* byteps/mxnet/__init__.py
+* byteps/mxnet/\_\_init\_\_.py
 * byteps/mxnet/ops.py
 * byteps/mxnet/ops.cc
 * byteps/mxnet/ops.h
