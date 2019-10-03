@@ -23,7 +23,7 @@ def worker(local_rank, local_size, command):
         # my_env["BYTEPS_LOG_LEVEL"] = "TRACE"
         my_env["TRACE_ON"] = "ON"
         my_env["TRACE_END_STEP"] = "110"
-        my_env["TRACE_DIR"]= "/mnt/cephfs_new_wj/mlsys/huhanpeng/20190919_auto_prof"
+        my_env["TRACE_DIR"]= "./traces"
         print("\n!!!Enable profiling for WORKER_ID: 0 and local_rank: 0!!!\nCommand: %s\n" % command)
         sys.stdout.flush()
 

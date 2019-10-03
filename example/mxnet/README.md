@@ -5,7 +5,7 @@ Auto profiling is enabeled using the following three enrironment variables.
 ``` python
 my_env["TRACE_ON"] = "ON"
 my_env["TRACE_END_STEP"] = "110"
-my_env["TRACE_DIR"]= "/mnt/cephfs_new_wj/mlsys/huhanpeng/20190919_auto_prof"
+my_env["TRACE_DIR"]= "./traces"
 ```
 `TRACE_ON` is set to `ON` to enable profiling, or the worker runs without profiling. `TRACE_END_STEP` denotes the number of steps we want to profile, byteps Profiler will automatically collect traces for the first `TRACE_END_STEP` steps and output traces in chrome trace format. `TRACE_DIR` denotes the path you want to store the output.
 
@@ -13,7 +13,7 @@ Currently, only the worker with rank `0` is set to auto profile, you can change 
 ``` python
 if os.environ.get("DMLC_WORKER_ID") == "0" and local_rank == 0:
 	...
-'''
+```
 
 Then, you can run the example code by
 
