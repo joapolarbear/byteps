@@ -114,6 +114,7 @@ class Recorder(object):
             we only focus on one parameter, e.g., the first parameter."""
         if _check_stop:
             self.step_cnt += 1
+            
 
         if self.step_cnt >= self.end_step:
             if self.para_name_list is None:
@@ -143,7 +144,7 @@ class Recorder(object):
 
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
         with open(self.trace_path, 'w') as f:
-            json.dump(self.time_dict, f)
+            json.dump(self.time_dict, f, indent=4)
         log("Stop tracing, output trace: %s" % self.trace_path)
         """ clear the time dict after save it"""
         self.time_dict = None
@@ -153,22 +154,27 @@ class Recorder(object):
         rst_traces = {"traceEvents": []}
         while index < len(mxnet_traces["traceEvents"]):
             trace = mxnet_traces["traceEvents"][index]
-            name = trace["name"]
+            _name = trace["name"]
+            # add for mxnet-gluon case
+            if "name=" in _name:
+                name = _name.split("name=")[1].split(";")[0]
+
             if trace["ph"] != 'B' and trace["ph"] != 'b':
                 index += 1
                 continue
-            if "_backward_" in name: # backward nodes
-                name = name.split("_backward_")[1]
+            if "_backward" in name: # backward nodes
+                name = name.split("_backward")[0]
                 if name not in self.dag.nodes:
                     index += 1
                     continue
                 innodes = ["BW." + _n for _n in self.dag.nodes[name]["out"]]
                 name = "BW." + name
-            elif name not in dag.nodes:
+            elif name not in self.dag.nodes:
                 index += 1
                 continue
             else: # forward nodes
-                innodes = self.dag.nodes[name]["in"] + self.dag.nodes[name]["var"]
+                innodes = ["FW." + _n for _n in self.dag.nodes[name]["in"]] + self.dag.nodes[name]["var"]
+                name = "FW." + name
             args = {"name": name}
             for i, _n in enumerate(innodes):
                 args["arg%d"%i] = _n
@@ -180,7 +186,7 @@ class Recorder(object):
                 next_trace = mxnet_traces["traceEvents"][index]
                 if next_trace["ph"] == 'e' or next_trace["ph"] == 'E':
                     break
-            if next_trace["name"] != name:
+            if name.split(".")[1] not in next_trace["name"]:
                 raise ValueError("'b/B' events must be followed with 'e/E' events!!!")
             trace["dur"] = next_trace['ts'] - trace['ts']
             rst_traces["traceEvents"].append(trace)
@@ -254,6 +260,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             if _ts == 0:
                 raise ValueError("_ts should not be 0")
             para_name = self.recorder.para_name_list[index]
+            op_name = "_".join(para_name.split("_")[:-1])
             return {
                     "name": "Comm." + para_name,
                     "ts": _ts,
@@ -262,7 +269,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
                     "pid": "Comm." + para_name,
                     "args": {
                         "name": "Comm." + para_name,
-                        "input0": "BW." + para_name
+                        "input0": "BW." + op_name
                         }
                     }
         self.recorder.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
@@ -281,12 +288,13 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
 
-        if self.recorder.add_record(index, (True if index == 0 else False)):
-            if isinstance(index, (tuple, list)):
-                for i in range(len(index)):
-                    self.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))
-            else:
-                self.byteps_record_comm(index, grad, "gradient_" + str(index))
+        # huhanpeng: modify add_record for when the index is tuple or list, 
+        if isinstance(index, (tuple, list)):
+            for i in range(len(index)):
+                if self.recorder.add_record(index[i], (True if index[i] == 0 else False)):
+                    self.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))       
+        else:
+            self.byteps_record_comm(index, grad, "gradient_" + str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
@@ -417,3 +425,5 @@ class DistributedTrainer(mx.gluon.Trainer):
         _ts, _dur = get_comm_time(tensor, name)
         log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
         # \TODO: how to get the name
+
+
