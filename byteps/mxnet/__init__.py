@@ -31,6 +31,7 @@ import logging
 import sys, os
 from mxnet import profiler
 import json
+import networkx as nx
 
 parameter_index = 0
 
@@ -38,34 +39,6 @@ def log(s):
     if rank() == 0:
         print(s)
         sys.stdout.flush()
-
-class DAG(object):
-    # The structure of the DAG should be like this
-    #    { "FW.conv2d": {
-    #                   "out": [...],
-    #                   "in" : [...],
-    #                   "var": []
-    #                   },
-    #       ...
-    #    }
-    def __init__(self):
-        self.nodes = {}
-    def _add_arrow(self, s, e):
-        # for edge s -> e, register this information to both node s and node e
-        # Args:
-        #   s: start node name (e.g., FW.conv)
-        #   e: end node name (e.g., FW.conv)
-        # add edge s -> e for s
-        if s not in self.nodes:
-            self.nodes[s] = {"out": [], "in": []}
-        if e not in self.nodes[s]["out"]:
-            self.nodes[s]["out"].append(e) # avoid to repeatly add edges
-        # add edge s -> e for e
-        if e not in self.nodes:
-            self.nodes[e] = {"out": [], "in": []}
-        if s not in self.nodes[e]["in"]:
-            self.nodes[e]["in"].append(s)
-
 
 class Recorder(object):
     # huhanpeng: class used to collect trace info
@@ -81,9 +54,8 @@ class Recorder(object):
         self.end_step = int(os.environ.get("TRACE_END_STEP"))\
                     if os.environ.get("TRACE_END_STEP") \
                     else 10
-        self.trace_path = os.environ.get("TRACE_DIR") + '/bytePS_COMM_%d.json' % self.end_step \
-                    if os.environ.get("TRACE_DIR") \
-                    else 'bytePS_COMM_%d.json' % self.end_step
+        self.trace_dir = os.environ.get("TRACE_DIR") + "/" if os.environ.get("TRACE_DIR") else ""
+        self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
 
         """config the mxnet profile"""
         profiler.set_config(profile_symbolic=True,
@@ -94,7 +66,7 @@ class Recorder(object):
                     aggregate_stats=False, 
                     filename=self.trace_path)
         profiler.set_state('run')
-        self.dag = DAG()
+        self.dag = nx.DiGraph()
 
     def add_record(self, index, _check_stop=False):
         if self._end_trace:
@@ -115,7 +87,6 @@ class Recorder(object):
         if _check_stop:
             self.step_cnt += 1
             
-
         if self.step_cnt >= self.end_step:
             if self.para_name_list is None:
                 self.para_name_list = []
@@ -125,9 +96,7 @@ class Recorder(object):
                         self.para_name_list.append(name)
             return True
         else:
-            return False
-  
-            
+            return False            
 
     def end_trace(self):
         return self._end_trace
@@ -145,6 +114,7 @@ class Recorder(object):
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
         with open(self.trace_path, 'w') as f:
             json.dump(self.time_dict, f, indent=4)
+        nx.write_gml(self.dag, self.trace_dir + "dag.txt")
         log("Stop tracing, output trace: %s" % self.trace_path)
         """ clear the time dict after save it"""
         self.time_dict = None
@@ -167,13 +137,15 @@ class Recorder(object):
                 if name not in self.dag.nodes:
                     index += 1
                     continue
-                innodes = ["BW." + _n for _n in self.dag.nodes[name]["out"]]
+                # innodes = ["BW." + _n for _n in self.dag.nodes[name]["out"]]
+                innodes = ["BW." + _n for _n in self.dag.successors(name)]
                 name = "BW." + name
             elif name not in self.dag.nodes:
                 index += 1
                 continue
             else: # forward nodes
-                innodes = ["FW." + _n for _n in self.dag.nodes[name]["in"]] + self.dag.nodes[name]["var"]
+                # innodes = ["FW." + _n for _n in self.dag.nodes[name]["in"]] + self.dag.nodes[name]["var"]
+                innodes = ["FW." + _n for _n, _ in self.dag.in_edges(name)] + self.dag.nodes[name]["var"]
                 name = "FW." + name
             args = {"name": name}
             for i, _n in enumerate(innodes):
@@ -229,16 +201,12 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             args = []
             for l in ls:
                 if "arg[" in l:
-                    # print(l)
                     arg_name = l.split(']=')[1].split('(')[0]
                     if arg_name not in var:
                         args.append(arg_name)
             for innode in args:
-                self.recorder.dag._add_arrow(innode, name)
-            if name in self.recorder.dag.nodes:
-                self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
-            else:
-                self.recorder.dag.nodes[name] = {"out": [], "in": [], "var": ["Comm." + e for e in var]}
+                self.recorder.dag.add_edges_from(innode, name)
+            self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
             index += 1
 
     def __getattr__(self, item):
