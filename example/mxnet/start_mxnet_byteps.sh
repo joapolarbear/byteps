@@ -22,7 +22,7 @@ if [ $DMLC_ROLE = "worker" ]; then
 	echo "Modify MXNet for workers"
 	MX_PATH=`${PYTHON} -c "import mxnet; path=str(mxnet.__path__); print(path.split(\"'\")[1])"`
 	echo "MX_PATH: $MX_PATH"
-	${PYTHON} $path/insert_code.py \
+	${PYTHON} $path/../../launcher/insert_code.py \
 			--target_file="$MX_PATH/module/executor_group.py" \
 			--start="        self.arg_names = symbol.list_arguments()" \
 			--end="        self.aux_names = symbol.list_auxiliary_states()" \
@@ -48,6 +48,6 @@ pip3 install networkx
 ##----------------------------------- Start to run the program ----------------------------------- 
 echo 
 echo "-------------------- Start to run the program ---------------"
-python $path/../../launch.py ${PYTHON} $path/train_imagenet_byteps.py --benchmark 1 --batch-size=32 
+python $path/../../launcher/launch.py ${PYTHON} $path/train_imagenet_byteps.py --benchmark 1 --batch-size=32 
 # --num-iters 1000
 
