@@ -167,7 +167,7 @@ class Recorder(object):
         return rst_traces
 
     """huhanpeng: add to construct a DAG"""
-    def gen_dag(self, sym):
+    def gen_dag(self, sym=None):
         if sym:
             s = sym.debug_str()
         else:
@@ -204,7 +204,7 @@ class Recorder(object):
             index += 1
 
     # huhanpeng
-    def byteps_record_comm(self, index, tensor, name):
+    def byteps_collect_comm(self, index, tensor, name):
         # huhanpeng: can be removed
         if self.end_trace():
             return
@@ -267,9 +267,10 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
                 if self.recorder.add_record(index[i], (True if index[i] == 0 else False)):
-                    self.recorder.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))       
+                    self.recorder.byteps_collect_comm(index[i], grad[i], "gradient_" + str(index[i]))       
         else:
-            self.recorder.byteps_record_comm(index, grad, "gradient_" + str(index))
+            if self.recorder.add_record(index, (True if index == 0 else False)):
+                self.recorder.byteps_collect_comm(index, grad, "gradient_" + str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
@@ -368,6 +369,11 @@ class DistributedTrainer(mx.gluon.Trainer):
         self._scale /= size()
         self.root_rank = root_rank
 
+        # huhanpeng: debug
+        log("This is a new DistributedTrainer with auto profiling")
+        self.recorder = Recorder()
+        self.recorder.gen_dag()
+
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
@@ -375,7 +381,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
                 # huhanpeng
-                self.byteps_record_comm(param.list_grad()[0], "gradient_" + str(i))
+            if self.recorder.add_record(i, (True if i == 0 else False)):
+                self.recorder.byteps_collect_comm(i, param.list_grad()[0], "gradient_" + str(i))
 
     def _init_params(self):
         tensors = []
@@ -395,10 +402,5 @@ class DistributedTrainer(mx.gluon.Trainer):
 
         self._params_to_init = tensors
 
-    # huhanpeng
-    def byteps_record_comm(self, tensor, name):
-        _ts, _dur = get_comm_time(tensor, name)
-        log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
-        # \TODO: how to get the name
 
 
