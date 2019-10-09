@@ -48,6 +48,6 @@ pip3 install networkx
 ##----------------------------------- Start to run the program ----------------------------------- 
 echo 
 echo "-------------------- Start to run the program ---------------"
-python $path/launch.py ${PYTHON} $path/train_imagenet_byteps.py --benchmark 1 --batch-size=32 
+python $path/../../launch.py ${PYTHON} $path/train_imagenet_byteps.py --benchmark 1 --batch-size=32 
 # --num-iters 1000
 
