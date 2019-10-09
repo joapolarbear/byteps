@@ -13,5 +13,5 @@ export DMLC_PS_ROOT_PORT=9000
 path="`dirname $0`"
 echo $path
 
-python $path/../../launcher/launch.py \
+python3 $path/../../launcher/launch.py \
     python $path/train_mnist_byteps.py

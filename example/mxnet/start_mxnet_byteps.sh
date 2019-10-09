@@ -1,19 +1,20 @@
 #!/bin/bash
 
-PY_VERSION="2"
+PY_VERSION="3"
 path="`dirname $0`"
 
 
 if [ "$PY_VERSION" = "3" ]; then
-	BYTEPS_PATH_3_6=`python3.6 -c "import byteps as bps; path=str(bps.__path__); print(path.split(\"'\")[1])"`
-	echo "BYTEPS_PATH_3_6:$BYTEPS_PATH_3_6" 
-	# BYTEPS_PATH: /usr/local/lib/python3.6/site-packages/byteps-0.1.0-py3.6-linux-x86_64.egg/byteps/torch
+	PYTHON="python3"
 elif [ "$PY_VERSION" = "2" ]; then	
-	BYTEPS_PATH_2=`python -c "import byteps as bps; path=str(bps.__path__); print(path.split(\"'\")[1])"`
-	echo "BYTEPS_PATH_2:$BYTEPS_PATH_2"
+	PYTHON="python"
 else
 	echo "Python version error"
 fi
+
+BYTEPS_PATH=`${PYTHON} -c "import byteps as bps; path=str(bps.__path__); print(path.split(\"'\")[1])"`
+echo "BYTEPS_PATH:${BYTEPS_PATH}" 
+# BYTEPS_PATH: /usr/local/lib/python3.6/site-packages/byteps-0.1.0-py3.6-linux-x86_64.egg/byteps/torch
 
 ##----------------------------------- 		Modify MXNet 	  ----------------------------------- 
 # \TODO huhanpeng: direct get the gradient names in bytePS without modifying MXNet python part
