@@ -203,6 +203,34 @@ class Recorder(object):
                 self.dag.add_node(name, var=["Comm." + e for e in var])           
             index += 1
 
+    # huhanpeng
+    def byteps_record_comm(self, index, tensor, name):
+        # huhanpeng: can be removed
+        if self.end_trace():
+            return
+
+        '''read communication traces offline'''
+        _ts_dur_list = get_comm_time(tensor, name) 
+
+        def return_event(index, _ts, _dur):
+            if _ts == 0:
+                raise ValueError("_ts should not be 0")
+            para_name = self.para_name_list[index]
+            op_name = "_".join(para_name.split("_")[:-1])
+            return {
+                    "name": "Comm." + para_name,
+                    "ts": _ts,
+                    "dur": _dur,
+                    "ph": "X",
+                    "pid": "Comm." + para_name,
+                    "args": {
+                        "name": "Comm." + para_name,
+                        "input0": "BW." + op_name
+                        }
+                    }
+        self.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
+        self.idx_dict[index] = True # avoid repeatedly read
+        # log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
@@ -222,37 +250,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         return getattr(self._optimizer, item)
 
     def create_state_multi_precision(self, index, weight):
-        return self._optimizer.create_state_multi_precision(index, weight)
-
-    # huhanpeng
-    def byteps_record_comm(self, index, tensor, name):
-        # huhanpeng: can be removed
-        if self.recorder.end_trace():
-            return
-
-        '''read communication traces offline'''
-        _ts_dur_list = get_comm_time(tensor, name) 
-
-        def return_event(index, _ts, _dur):
-            if _ts == 0:
-                raise ValueError("_ts should not be 0")
-            para_name = self.recorder.para_name_list[index]
-            op_name = "_".join(para_name.split("_")[:-1])
-            return {
-                    "name": "Comm." + para_name,
-                    "ts": _ts,
-                    "dur": _dur,
-                    "ph": "X",
-                    "pid": "Comm." + para_name,
-                    "args": {
-                        "name": "Comm." + para_name,
-                        "input0": "BW." + op_name
-                        }
-                    }
-        self.recorder.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
-        self.recorder.idx_dict[index] = True # avoid repeatedly read
-        # log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
-        
+        return self._optimizer.create_state_multi_precision(index, weight)  
 
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
@@ -269,9 +267,9 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
                 if self.recorder.add_record(index[i], (True if index[i] == 0 else False)):
-                    self.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))       
+                    self.recorder.byteps_record_comm(index[i], grad[i], "gradient_" + str(index[i]))       
         else:
-            self.byteps_record_comm(index, grad, "gradient_" + str(index))
+            self.recorder.byteps_record_comm(index, grad, "gradient_" + str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
