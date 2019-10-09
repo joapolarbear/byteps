@@ -381,7 +381,6 @@ class DistributedTrainer(mx.gluon.Trainer):
         # huhanpeng: debug
         log("This is a new DistributedTrainer with auto profiling")
         self.recorder = Recorder()
-        self.recorder.gen_dag()
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
         self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
         self.recorder.block = block
