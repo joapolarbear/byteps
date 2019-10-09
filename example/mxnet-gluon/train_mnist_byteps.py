@@ -126,7 +126,9 @@ params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
+
+## huhanpeng: add an argument
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()

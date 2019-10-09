@@ -46,16 +46,6 @@ if path:
 	with open(os.path.join(path, 'arg_namesINpara_names.txt'), 'w') as f:
 		for name in _param_names:
 			f.write('%s\n' % name) # output execution graph"
-	${PYTHON} $path/../../launcher/insert_code.py \
-			--target_file="$MX_PATH/module/executor_group.py" \
-			--start="        self._total_exec_bytes += int(executor.debug_str().split('\n')[-3].split()[1])" \
-			--end="        return executor" \
-			--indent_level=2 \
-			--content_str="import os
-path = os.environ.get('TRACE_DIR')
-if path:
-	with open(os.path.join(path, 'symbol_debug_str.txt'), 'w') as f:
-		f.write(executor.debug_str()) # output execution graph"
 else
 	echo "No need to modify mxnet for server/scheduler."
 fi

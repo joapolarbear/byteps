@@ -45,7 +45,7 @@ class Recorder(object):
     def __init__(self):
         self.time_dict = {"traceEvents":[]}
         self.idx_dict = {}
-        self.para_name_list = None
+        self.gradient_name_list = None
         self.step_cnt = 0
         if os.environ.get("TRACE_ON") != 'ON':
             self._end_trace = True
@@ -68,6 +68,9 @@ class Recorder(object):
         profiler.set_state('run')
         self.dag = nx.DiGraph()
 
+        self.block = None
+        self.symbol = None
+
     def add_record(self, index, _check_stop=False):
         if self._end_trace:
             return False
@@ -88,12 +91,12 @@ class Recorder(object):
             self.step_cnt += 1
             
         if self.step_cnt >= self.end_step:
-            if self.para_name_list is None:
-                self.para_name_list = []
+            if self.gradient_name_list is None:
+                self.gradient_name_list = []
                 with open(os.path.join(os.environ.get('TRACE_DIR'), 'arg_namesINpara_names.txt'), 'r') as lines:
                     for line in lines:
                         name = line[:-1]
-                        self.para_name_list.append(name)
+                        self.gradient_name_list.append(name)
             return True
         else:
             return False            
@@ -105,10 +108,21 @@ class Recorder(object):
         """save the MXNet profiling results first"""
         profiler.set_state('stop')
         profiler.dump()
+
         """Note: open the file in append mode"""
         with open(self.trace_path, 'r') as f:
             mxnet_traces = json.load(f)
-        # mxnet_traces={"traceEvents":[]}
+
+        """Get the dependency graph first""" 
+        if self.symbol is not None:
+            self.gen_dag(self.symbol.debug_str())
+        elif self.block is not None:
+            symbol = self.block._cached_graph[1]
+            self.gen_dag(symbol.debug_str())
+        else:
+            raise ValueError("A symbol or model/block must be given when defining DistributedOptimizer/DistributedTrainer.")
+
+        """ Apply dependencies in self.dag to the mxnet traces. """
         rst_traces = self.add_dependency(mxnet_traces)
 
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
@@ -166,13 +180,11 @@ class Recorder(object):
 
         return rst_traces
 
-    """huhanpeng: add to construct a DAG"""
-    def gen_dag(self, sym=None):
-        if sym is not None:
-            s = sym.debug_str()
-        else:
-            with open(self.trace_dir + 'symbol_debug_str.txt') as f:
-                s = f.read() 
+    """huhanpeng: add to construct a DAG
+    Args:
+      s: str, must follow the standard format and not None.
+    """
+    def gen_dag(self, s):
         blocks = s.split("--------------------\n")
         index = 0
         for i in range(1, len(blocks)):
@@ -215,7 +227,7 @@ class Recorder(object):
         def return_event(index, _ts, _dur):
             if _ts == 0:
                 raise ValueError("_ts should not be 0")
-            para_name = self.para_name_list[index]
+            para_name = self.gradient_name_list[index]
             op_name = "_".join(para_name.split("_")[:-1])
             return {
                     "name": "Comm." + para_name,
@@ -241,10 +253,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
 
         """tracing configure""" 
         self.recorder = Recorder()
-        self._symbol = sym
-
-        # para_names = self._symbol.attr_dict().keys()
-        self.recorder.gen_dag(self._symbol)
+        self.recorder.symbol = sym
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
@@ -354,7 +363,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         constructor for a list of additional supported arguments.
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0):
+    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, block=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
@@ -373,6 +382,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         log("This is a new DistributedTrainer with auto profiling")
         self.recorder = Recorder()
         self.recorder.gen_dag()
+        # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
+        self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
+        self.recorder.block = block
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
@@ -381,7 +393,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
                 # huhanpeng
-            if self.recorder.add_record(i, (True if i == 0 else False)):
+            if self.recorder.add_record(i, (True if i == 0 else False)) and param.grad_req != 'null':
                 self.recorder.byteps_collect_comm(i, param.list_grad()[0], "gradient_" + str(i))
 
     def _init_params(self):
