@@ -114,7 +114,8 @@ class Recorder(object):
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
         with open(self.trace_path, 'w') as f:
             json.dump(self.time_dict, f, indent=4)
-        nx.write_gml(self.dag, self.trace_dir + "dag.txt")
+        print(self.dag)
+        nx.write_gml(self.dag, self.trace_dir + "dag.gml")
         log("Stop tracing, output trace: %s" % self.trace_path)
         """ clear the time dict after save it"""
         self.time_dict = None
@@ -205,8 +206,12 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
                     if arg_name not in var:
                         args.append(arg_name)
             for innode in args:
-                self.recorder.dag.add_edges_from(innode, name)
-            self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
+                self.recorder.dag.add_edges_from([(innode, name)])
+            if name in self.recorder.dag.nodes:
+                self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
+            else:
+                # for the first node, it has no arg, so not be defined yet
+                self.recorder.dag.add_node(name, var=["Comm." + e for e in var])           
             index += 1
 
     def __getattr__(self, item):
