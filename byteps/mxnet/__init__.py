@@ -114,7 +114,6 @@ class Recorder(object):
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
         with open(self.trace_path, 'w') as f:
             json.dump(self.time_dict, f, indent=4)
-        print(self.dag)
         nx.write_gml(self.dag, self.trace_dir + "dag.gml")
         log("Stop tracing, output trace: %s" % self.trace_path)
         """ clear the time dict after save it"""
