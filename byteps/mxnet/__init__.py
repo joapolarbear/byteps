@@ -166,23 +166,13 @@ class Recorder(object):
 
         return rst_traces
 
-
-class DistributedOptimizer(mx.optimizer.Optimizer):
-    """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
-    def __init__(self, optimizer, sym):
-        self._optimizer = optimizer
-        # huhanpeng: debug
-        log("This is a new DistributedOptimizer with auto profiling")
-
-        """tracing configure""" 
-        self.recorder = Recorder()
-        self._symbol = sym
-
-        # para_names = self._symbol.attr_dict().keys()
-        self.gen_dag(self._symbol.debug_str())
-
     """huhanpeng: add to construct a DAG"""
-    def gen_dag(self, s):
+    def gen_dag(self, sym):
+        if sym:
+            s = sym.debug_str()
+        else:
+            with open(self.trace_dir + 'symbol_debug_str.txt') as f:
+                s = f.read() 
         blocks = s.split("--------------------\n")
         index = 0
         for i in range(1, len(blocks)):
@@ -205,13 +195,28 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
                     if arg_name not in var:
                         args.append(arg_name)
             for innode in args:
-                self.recorder.dag.add_edges_from([(innode, name)])
-            if name in self.recorder.dag.nodes:
-                self.recorder.dag.nodes[name]["var"] = ["Comm." + e for e in var]
+                self.dag.add_edges_from([(innode, name)])
+            if name in self.dag.nodes:
+                self.dag.nodes[name]["var"] = ["Comm." + e for e in var]
             else:
                 # for the first node, it has no arg, so not be defined yet
-                self.recorder.dag.add_node(name, var=["Comm." + e for e in var])           
+                self.dag.add_node(name, var=["Comm." + e for e in var])           
             index += 1
+
+
+class DistributedOptimizer(mx.optimizer.Optimizer):
+    """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
+    def __init__(self, optimizer, sym=None):
+        self._optimizer = optimizer
+        # huhanpeng: debug
+        log("This is a new DistributedOptimizer with auto profiling")
+
+        """tracing configure""" 
+        self.recorder = Recorder()
+        self._symbol = sym
+
+        # para_names = self._symbol.attr_dict().keys()
+        self.recorder.gen_dag(self._symbol)
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
