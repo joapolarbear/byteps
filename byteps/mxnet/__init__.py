@@ -382,7 +382,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         log("This is a new DistributedTrainer with auto profiling")
         self.recorder = Recorder()
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
-        self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
+        self.recorder.gradient_name_list = ["_".join(gradient_name.split("_")[1:]) for gradient_name in list(params)]
         self.recorder.block = block
 
     def _allreduce_grads(self):
