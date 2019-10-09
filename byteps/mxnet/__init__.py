@@ -168,7 +168,7 @@ class Recorder(object):
 
     """huhanpeng: add to construct a DAG"""
     def gen_dag(self, sym=None):
-        if sym:
+        if sym is not None:
             s = sym.debug_str()
         else:
             with open(self.trace_dir + 'symbol_debug_str.txt') as f:
