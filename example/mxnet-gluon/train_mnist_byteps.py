@@ -119,8 +119,10 @@ model.hybridize()
 
 # BytePS: fetch and broadcast parameters
 params = model.collect_params()
-if params is not None:
-    bps.broadcast_parameters(params, root_rank=0)
+
+# huhanpeng: raise typeerror if call broadcast_parameters for gluon
+# if params is not None:
+#     bps.broadcast_parameters(params, root_rank=0)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}

@@ -1,5 +1,4 @@
 #!/bin/bash
-
 export NVIDIA_VISIBLE_DEVICES=0,1
 export DMLC_WORKER_ID=0
 export DMLC_NUM_WORKER=1
@@ -10,8 +9,8 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=127.0.0.1
 export DMLC_PS_ROOT_PORT=9000
 
-
-#!/bin/bash
+# set the enriroment variable to diable running performance tests to find the best convolution alglrithm
+export MXNET_CUDNN_AUTOTUNE_DEFAULT=0
 
 PY_VERSION="3"
 path="`dirname $0`"
