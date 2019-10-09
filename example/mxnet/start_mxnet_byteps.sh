@@ -41,6 +41,9 @@ fi
 # \TODO: may influence the performance
 export MXNET_EXEC_BULK_EXEC_TRAIN=0
 
+## install networkx
+pip3 install networkx
+
 ##----------------------------------- Start to run the program ----------------------------------- 
 echo 
 echo "-------------------- Start to run the program ---------------"
