@@ -35,7 +35,7 @@ if [ $DMLC_ROLE = "worker" ]; then
 	echo "Modify MXNet for workers"
 	MX_PATH=`${PYTHON} -c "import mxnet; path=str(mxnet.__path__); print(path.split(\"'\")[1])"`
 	echo "MX_PATH: $MX_PATH"
-	${PYTHON} $path/insert_code.py \
+	${PYTHON} $path/../../insert_code.py \
 			--target_file="$MX_PATH/module/executor_group.py" \
 			--start="        self.arg_names = symbol.list_arguments()" \
 			--end="        self.aux_names = symbol.list_auxiliary_states()" \
@@ -47,7 +47,7 @@ if path:
 	with open(os.path.join(path, 'arg_namesINpara_names.txt'), 'w') as f:
 		for name in _param_names:
 			f.write('%s\n' % name) # output execution graph"
-	${PYTHON} $path/insert_code.py \
+	${PYTHON} $path/../../insert_code.py \
 			--target_file="$MX_PATH/module/executor_group.py" \
 			--start="        self._total_exec_bytes += int(executor.debug_str().split('\n')[-3].split()[1])" \
 			--end="        return executor" \
