@@ -254,6 +254,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         """tracing configure""" 
         self.recorder = Recorder()
         self.recorder.symbol = sym
+        log("1")
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
@@ -271,7 +272,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             byteps_declare_tensor(grad, "gradient_" + str(index))
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
-
+        log("2")
         # huhanpeng: modify add_record for when the index is tuple or list, 
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
