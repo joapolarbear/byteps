@@ -254,7 +254,6 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         """tracing configure""" 
         self.recorder = Recorder()
         self.recorder.symbol = sym
-        log("1")
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
@@ -263,6 +262,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         return self._optimizer.create_state_multi_precision(index, weight)  
 
     def _do_push_pull(self, index, grad):
+        log("1")
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
                 byteps_declare_tensor(grad[i], "gradient_" + str(index[i]))
