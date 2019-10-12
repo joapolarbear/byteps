@@ -166,43 +166,43 @@ def run_one_epoch(epoch):
     if bps.rank() == 0 and epoch == args.epochs - 1:
         assert val_acc > 0.96, "Achieved accuracy (%f) is lower than expected\
                                 (0.96)" % val_acc
-## huhanpeng: warm up
-run_one_epoch(0)
+# Train model
+for epoch in range(args.epochs):
+    run_one_epoch(epoch)
 
 ## huhanpeng: export the model
-trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
-model.export(trace_dir + "gluon_model")
+# trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+# model.export(trace_dir + "gluon_model")
 
-## huhanpeng: construct symbol model
-symnet = mx.symbol.load('gluon_model-symbol.json')
-mod = mx.mod.Module(symbol=symnet, context=context)
-mod.bind(data_shapes=train_data.provide_data,
-        label_shapes=train_data.provide_label)
-mod.load_params('gluon_model-0000.params')
-opt = mx.optimizer.create(args.optimizer, sym=symnet, **optimizer_params)
-opt = bps.DistributedOptimizer(opt, sym=symnet)
+# ## huhanpeng: construct symbol model
+# symnet = mx.symbol.load('gluon_model-symbol.json')
+# mod = mx.mod.Module(symbol=symnet, context=context)
+# mod.bind(data_shapes=train_data.provide_data,
+#         label_shapes=train_data.provide_label)
+# mod.load_params('gluon_model-0000.params')
+# opt = mx.optimizer.create(args.optimizer, sym=symnet, **optimizer_params)
+# opt = bps.DistributedOptimizer(opt, sym=symnet)
 
-batch_end_callbacks = [mx.callback.Speedometer(
-        args.batch_size, args.disp_batches)]
-eval_metrics = ['accuracy']
-model.fit(train,
-              begin_epoch=0,
-              num_epoch=args.epochs,
-              eval_data=val_data,
-              eval_metric=eval_metrics,
-              kvstore=None,
-              optimizer=opt,
-              optimizer_params=optimizer_params,
-              batch_end_callback=batch_end_callbacks,
-              epoch_end_callback=None,
-              allow_missing=True,
-              monitor=None)
+# batch_end_callbacks = [mx.callback.Speedometer(
+#         args.batch_size, args.disp_batches)]
+# eval_metrics = ['accuracy']
+# model.fit(train,
+#               begin_epoch=0,
+#               num_epoch=args.epochs,
+#               eval_data=val_data,
+#               eval_metric=eval_metrics,
+#               kvstore=None,
+#               optimizer=opt,
+#               optimizer_params=optimizer_params,
+#               batch_end_callback=batch_end_callbacks,
+#               epoch_end_callback=None,
+#               allow_missing=True,
+#               monitor=None)
 
 ## huhanpeng: add an argument
 # trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
 
-# Train model
-# for epoch in range(args.epochs):
+
 
 
