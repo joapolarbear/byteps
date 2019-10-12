@@ -264,7 +264,6 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         return self._optimizer.create_state_multi_precision(index, weight)  
 
     def _do_push_pull(self, index, grad):
-        log("1")
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
                 byteps_declare_tensor(grad[i], "gradient_" + str(index[i]))
@@ -274,7 +273,6 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             byteps_declare_tensor(grad, "gradient_" + str(index))
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
-        log("2")
         # huhanpeng: modify add_record for when the index is tuple or list, 
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
