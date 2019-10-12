@@ -22,6 +22,7 @@ import mxnet as mx
 import byteps.mxnet as bps
 from mxnet import autograd, gluon, nd
 from mxnet.gluon.data.vision import MNIST
+import os
 
 
 # Higher download speed for chinese users
@@ -32,9 +33,9 @@ parser = argparse.ArgumentParser(description='MXNet MNIST Example')
 
 parser.add_argument('--batch-size', type=int, default=64,
                     help='training batch size (default: 64)')
-train.add_argument('--disp-batches', type=int, default=20,
+parser.add_argument('--disp-batches', type=int, default=20,
                        help='show progress for every n batches')
-train.add_argument('--optimizer', type=str, default='sgd',
+parser.add_argument('--optimizer', type=str, default='sgd',
                        help='the optimizer type')
 parser.add_argument('--dtype', type=str, default='float32',
                     help='training data type (default: float32)')
@@ -169,7 +170,7 @@ def run_one_epoch(epoch):
 run_one_epoch(0)
 
 ## huhanpeng: export the model
-trace_dir = os.environ.get("TRACE_DIR") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/" if os.environ.get("TRACE_DIR") else os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
 model.export(trace_dir + "gluon_model")
 
 ## huhanpeng: construct symbol model
