@@ -54,7 +54,7 @@ class Recorder(object):
         self.end_step = int(os.environ.get("TRACE_END_STEP"))\
                     if os.environ.get("TRACE_END_STEP") \
                     else 10
-        self.trace_dir = os.environ.get("TRACE_DIR") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/" if os.environ.get("TRACE_DIR") else ""
+        self.trace_dir = os.environ.get("TRACE_DIR") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/" if os.environ.get("TRACE_DIR") else os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)

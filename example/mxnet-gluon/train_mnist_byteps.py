@@ -32,6 +32,10 @@ parser = argparse.ArgumentParser(description='MXNet MNIST Example')
 
 parser.add_argument('--batch-size', type=int, default=64,
                     help='training batch size (default: 64)')
+train.add_argument('--disp-batches', type=int, default=20,
+                       help='show progress for every n batches')
+train.add_argument('--optimizer', type=str, default='sgd',
+                       help='the optimizer type')
 parser.add_argument('--dtype', type=str, default='float32',
                     help='training data type (default: float32)')
 parser.add_argument('--epochs', type=int, default=5,
@@ -125,48 +129,79 @@ params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-
-## huhanpeng: add an argument
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
+trainer = mx.gluon.Trainer(params, "sgd", optimizer_params)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
 metric = mx.metric.Accuracy()
 
-# Train model
-for epoch in range(args.epochs):
+def run_one_epoch(epoch):
     tic = time.time()
     metric.reset()
     for i, batch in enumerate(train_data):
         data = batch[0].as_in_context(context)
         label = batch[1].as_in_context(context)
-
         with autograd.record():
             output = model(data)
             loss = loss_fn(output, label)
-
         loss.backward()
         trainer.step(args.batch_size)
         metric.update([label], [output])
-
         if i % 100 == 0:
             name, acc = metric.get()
             logging.info('[Epoch %d Batch %d] Training: %s=%f' %
                          (epoch, i, name, acc))
-
     if bps.rank() == 0:
         elapsed = time.time() - tic
         speed = train_size * num_workers / elapsed
         logging.info('Epoch[%d]\tSpeed=%.2f samples/s\tTime cost=%f',
                      epoch, speed, elapsed)
-
     # Evaluate model accuracy
     _, train_acc = metric.get()
     name, val_acc = evaluate(model, val_data, context)
     if bps.rank() == 0:
         logging.info('Epoch[%d]\tTrain: %s=%f\tValidation: %s=%f', epoch, name,
                      train_acc, name, val_acc)
-
     if bps.rank() == 0 and epoch == args.epochs - 1:
         assert val_acc > 0.96, "Achieved accuracy (%f) is lower than expected\
                                 (0.96)" % val_acc
+## huhanpeng: warm up
+run_one_epoch(0)
+
+## huhanpeng: export the model
+trace_dir = os.environ.get("TRACE_DIR") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/" if os.environ.get("TRACE_DIR") else os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+model.export(trace_dir + "gluon_model")
+
+## huhanpeng: construct symbol model
+symnet = mx.symbol.load('gluon_model-symbol.json')
+mod = mx.mod.Module(symbol=symnet, context=context)
+mod.bind(data_shapes=train_data.provide_data,
+        label_shapes=train_data.provide_label)
+mod.load_params('gluon_model-0000.params')
+opt = mx.optimizer.create(args.optimizer, sym=symnet, **optimizer_params)
+opt = bps.DistributedOptimizer(opt, sym=symnet)
+
+batch_end_callbacks = [mx.callback.Speedometer(
+        args.batch_size, args.disp_batches)]
+eval_metrics = ['accuracy']
+model.fit(train,
+              begin_epoch=0,
+              num_epoch=args.epochs,
+              eval_data=val_data,
+              eval_metric=eval_metrics,
+              kvstore=None,
+              optimizer=opt,
+              optimizer_params=optimizer_params,
+              batch_end_callback=batch_end_callbacks,
+              epoch_end_callback=None,
+              allow_missing=True,
+              monitor=None)
+
+## huhanpeng: add an argument
+# trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
+
+
+# Train model
+# for epoch in range(args.epochs):
+
+
