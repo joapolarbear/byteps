@@ -47,13 +47,11 @@ class Recorder(object):
         self.idx_dict = {}
         self.gradient_name_list = None
         self.step_cnt = 0
-        if os.environ.get("TRACE_ON") != 'ON':
+        if os.environ.get("TRACE_ON", "") != 'ON':
             self._end_trace = True
             return
         self._end_trace = False
-        self.end_step = int(os.environ.get("TRACE_END_STEP"))\
-                    if os.environ.get("TRACE_END_STEP") \
-                    else 10
+        self.end_step = int(os.environ.get("TRACE_END_STEP", "10"))
         self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
