@@ -66,7 +66,7 @@ class Recorder(object):
                     profile_api=False,
                     # profile_process=False,
                     aggregate_stats=False, 
-                    filename=self.trace_path)
+                    filename=self.trace_dir+'temp.json')
         profiler.set_state('run')
         self.dag = nx.DiGraph()
 
@@ -95,7 +95,7 @@ class Recorder(object):
         if self.step_cnt >= self.end_step:
             if self.gradient_name_list is None:
                 self.gradient_name_list = []
-                with open(os.path.join(os.environ.get('TRACE_DIR'), 'arg_namesINpara_names.txt'), 'r') as lines:
+                with open(os.path.join(self.trace_dir, 'arg_namesINpara_names.txt'), 'r') as lines:
                     for line in lines:
                         name = line[:-1]
                         self.gradient_name_list.append(name)
@@ -112,7 +112,7 @@ class Recorder(object):
         profiler.dump()
 
         """Note: open the file in append mode"""
-        with open(self.trace_path, 'r') as f:
+        with open(self.trace_dir + 'temp.json', 'r') as f:
             mxnet_traces = json.load(f)
 
         """Get the dependency graph first""" 
@@ -140,10 +140,10 @@ class Recorder(object):
         rst_traces = {"traceEvents": []}
         while index < len(mxnet_traces["traceEvents"]):
             trace = mxnet_traces["traceEvents"][index]
-            _name = trace["name"]
+            name = trace["name"]
             # add for mxnet-gluon case
-            if "name=" in _name:
-                name = _name.split("name=")[1].split(";")[0]
+            if "name=" in name:
+                name = name.split("name=")[1].split(";")[0]
 
             if trace["ph"] != 'B' and trace["ph"] != 'b':
                 index += 1
