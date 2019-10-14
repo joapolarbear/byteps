@@ -36,6 +36,7 @@ import networkx as nx
 
 parameter_index = 0
 
+# huhanpeng:
 def log(s):
     if rank() == 0:
         print(s)
