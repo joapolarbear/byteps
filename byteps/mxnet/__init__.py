@@ -168,6 +168,7 @@ class Recorder(object):
                 args["arg%d"%i] = _n
             trace["name"] = name
             trace["args"] = args
+            trace["ph"] = "X"
 
             while True:
                 index += 1
