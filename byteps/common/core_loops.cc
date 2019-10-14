@@ -89,7 +89,9 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
         // task->context->cnt += 1;
         task->context->dur.push((long long)(us.count()) - task->context->start_t.back());
       } else{
-        BPS_CHECK(task->context->start_t.size() == task->context->dur.size());
+        BPS_CHECK(task->context->start_t.size() == task->context->dur.size()) 
+                      << "start_t.size: " << task->context->start_t.size() 
+                      << "->dur.size(): " << task->context->dur.size();
       }
     }
   }
