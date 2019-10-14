@@ -53,4 +53,6 @@ Let's look deep into the traces, each event in the `bps_trace_local_rank0_3step.
             "dur": 2498
         },
 ```
-Here, `name` is the name of the event, which can be shown on `chrome://tracing/`. The event name is composed of operation type and operator real name. Here we define three operator types, `FW. (forward), BW. (backward) and Comm. (communication operation`.
+Basically, the trace event formate is the same as the standard format of chrome traceing, you can refer to [Trace Event Format](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/edit) to learn more about this. Here, `name` is the name of the event, which can be shown on `chrome://tracing/`. The event name is composed of operation type and operator real name. Here we define three operator types, `FW. (forward), BW. (backward) and Comm. (communication operation`. 
+
+Note that we store the dependency information in the `args` field. `args/name` is the node name and `args/arg0, args/arg1, args/arg2` denote the input nodes.
