@@ -23,6 +23,8 @@ import byteps.mxnet as bps
 from mxnet import autograd, gluon, nd
 from mxnet.gluon.data.vision import MNIST
 
+import os
+
 
 # Higher download speed for chinese users
 # os.environ['MXNET_GLUON_REPO'] = 'https://apache-mxnet.s3.cn-north-1.amazonaws.com.cn/'
@@ -99,6 +101,9 @@ def evaluate(model, data_iter, context):
 
 # Load training and validation data
 train_data, val_data, train_size = get_mnist_iterator()
+from byteps.common.dataloader import BPSDatasetLoader, BPSMultiWorkerIter
+train_data = BPSDatasetLoader(train_data)
+val_data = BPSDatasetLoader(val_data)
 
 # Initialize BytePS
 bps.init()
@@ -116,16 +121,15 @@ model.initialize(mx.init.MSRAPrelu(), ctx=context)
 # if bps.rank() == 0:
 model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(bps.local_rank())))
 model.hybridize()
+# Create loss function and train metric
+loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
+metric = mx.metric.Accuracy()
+optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
 
 params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
-optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
-
-# Create loss function and train metric
-loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
-metric = mx.metric.Accuracy()
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
 # Train model
 for epoch in range(args.epochs):

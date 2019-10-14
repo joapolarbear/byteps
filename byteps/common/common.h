@@ -179,13 +179,7 @@ typedef struct BytePSContext {
   int local_rank = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
 } BPSContext;
-
-// add for profiling
-typedef struct CommTime {
-  long long start_t;
-  long long dur;
-  int ramain;
-} BPSCommTime;
+void output_traces(BytePSContext *ctxt);
 
 class Tensor {
  public:

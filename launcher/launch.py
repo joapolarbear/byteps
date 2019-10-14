@@ -42,6 +42,10 @@ def worker(local_rank, local_size, command):
         print("BYTEPS_TRACE_START_STEP: %s\tBYTEPS_TRACE_END_STEP: %s\t BYTEPS_TRACE_DIR: %s" % (os.environ.get("BYTEPS_TRACE_START_STEP", ""), os.environ.get("BYTEPS_TRACE_END_STEP", ""), os.environ.get("BYTEPS_TRACE_DIR", "")))
         print("Command: %s\n" % command)
         sys.stdout.flush()
+
+        ## To avoid integrating multiple operators into one single events
+        # \TODO: may influence the performance
+        my_env["MXNET_EXEC_BULK_EXEC_TRAIN"] = "0"
         trace_path = os.path.join(os.environ.get("BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)

@@ -29,7 +29,7 @@ echo "BYTEPS_PATH:${BYTEPS_PATH}"
 # BYTEPS_PATH: /usr/local/lib/python3.6/site-packages/byteps-0.1.0-py3.6-linux-x86_64.egg/byteps/torch
 
 ##----------------------------------- 		Modify MXNet 	  ----------------------------------- 
-# \TODO huhanpeng: direct get the gradient names in bytePS without modifying MXNet python part
+# \TODO: direct get the gradient names in bytePS without modifying MXNet python part
 if [ $DMLC_ROLE = "worker" ]; then
 	echo "Modify MXNet for workers"
 	MX_PATH=`${PYTHON} -c "import mxnet; path=str(mxnet.__path__); print(path.split(\"'\")[1])"`
@@ -41,8 +41,10 @@ if [ $DMLC_ROLE = "worker" ]; then
 			--indent_level=2 \
 			--content_str="import os
 _param_names = [name for i, name in enumerate(self.arg_names) if name in self.param_names]
-path = os.environ.get('TRACE_DIR')
+path = os.environ.get('BYTEPS_TRACE_DIR', '.') + '/' + os.environ.get('BYTEPS_RANK') + '_' + os.environ.get('BYTEPS_LOCAL_RANK') + '/'
 if path:
+	if not os.path.exists(path):
+		os.makedirs(path)
 	with open(os.path.join(path, 'arg_namesINpara_names.txt'), 'w') as f:
 		for name in _param_names:
 			f.write('%s\n' % name) # output execution graph"
