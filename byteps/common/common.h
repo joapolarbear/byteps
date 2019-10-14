@@ -180,6 +180,13 @@ typedef struct BytePSContext {
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
 } BPSContext;
 
+// add for profiling
+typedef struct CommTime {
+  long long start_t;
+  long long dur;
+  int ramain;
+} BPSCommTime;
+
 class Tensor {
  public:
   virtual const DataType dtype() const = 0;

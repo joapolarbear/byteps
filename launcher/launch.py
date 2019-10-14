@@ -6,6 +6,7 @@ import subprocess
 import threading
 import sys
 import time
+import traceback
 
 COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
                         "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
@@ -47,7 +48,10 @@ def worker(local_rank, local_size, command):
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
-    print("BytePS launching " + os.environ["DMLC_ROLE"])
+    DMLC_ROLE = os.environ.get("DMLC_ROLE")
+    print("BytePS launching " + (DMLC_ROLE if DMLC_ROLE else 'None'))
+    BYTEPS_SERVER_MXNET_PATH = os.getenv("BYTEPS_SERVER_MXNET_PATH")
+    print("BYTEPS_SERVER_MXNET_PATH: " + (BYTEPS_SERVER_MXNET_PATH if BYTEPS_SERVER_MXNET_PATH else 'None'))
     sys.stdout.flush()
     check_env()
     if os.environ["DMLC_ROLE"] == "worker":
