@@ -119,12 +119,13 @@ model.hybridize()
 
 # BytePS: fetch and broadcast parameters
 params = model.collect_params()
-if params is not None:
-    bps.broadcast_parameters(params, root_rank=0)
+
+# if params is not None:
+#     bps.broadcast_parameters(params, root_rank=0)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
