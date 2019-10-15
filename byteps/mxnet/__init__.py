@@ -44,7 +44,7 @@ def log(s):
 
 class Recorder(object):
     # huhanpeng: class used to collect trace info
-    def __init__(self):
+    def __init__(self, only_symbolic=True):
         self.time_dict = {"traceEvents":[]}
         self.idx_dict = {}
         self.gradient_name_list = None
@@ -60,13 +60,17 @@ class Recorder(object):
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
 
         """config the mxnet profile"""
-        profiler.set_config(profile_symbolic=True,
-                    profile_imperative=False,
-                    profile_memory=False,
-                    profile_api=False,
-                    # profile_process=False,
-                    aggregate_stats=False, 
-                    filename=self.trace_dir+'temp.json')
+        if only_symbolic:
+            profiler.set_config(profile_symbolic=True,
+                        profile_imperative=False,
+                        profile_memory=False,
+                        profile_api=False,
+                        # profile_process=False,
+                        aggregate_stats=False, 
+                        filename=self.trace_dir+'temp.json')
+        else:
+            profiler.set_config(profile_all=True, 
+                        filename=self.trace_dir+'temp.json')
         profiler.set_state('run')
         self.dag = nx.DiGraph()
 
@@ -416,7 +420,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
         # huhanpeng: debug
         log("This is a new DistributedTrainer with auto profiling")
-        self.recorder = Recorder()
+        self.recorder = Recorder(only_symbolic=False)
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
         self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
         self.recorder.block = block
