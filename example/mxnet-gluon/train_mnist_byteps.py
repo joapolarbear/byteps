@@ -135,7 +135,8 @@ assert os.path.isfile(prefix + '-0000.params')
 # --------------------- import with SymbolBlock ----------
 imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
                                                    ['data'],
-                                                   prefix + '-0000.params')
+                                                   prefix + '-0000.params',
+                                                   ctx=context)
 # BytePS: fetch and broadcast parameters
 params = imported_net.collect_params()
 
