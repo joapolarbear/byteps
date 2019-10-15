@@ -23,6 +23,8 @@ import byteps.mxnet as bps
 from mxnet import autograd, gluon, nd
 from mxnet.gluon.data.vision import MNIST
 
+import os
+
 
 # Higher download speed for chinese users
 # os.environ['MXNET_GLUON_REPO'] = 'https://apache-mxnet.s3.cn-north-1.amazonaws.com.cn/'
@@ -116,20 +118,30 @@ model.initialize(mx.init.MSRAPrelu(), ctx=context)
 # if bps.rank() == 0:
 model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(bps.local_rank())))
 model.hybridize()
+# Create loss function and train metric
+loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
+metric = mx.metric.Accuracy()
 
+# --------------------- warmup and export ---------------
+batch = list(train_data)[0]
+data = batch[0].as_in_context(context)
+label = batch[1].as_in_context(context)
+output = model(data)
+prefix = "GluonModel"
+model.export(prefix)
+assert os.path.isfile(prefix + '-symbol.json')
+assert os.path.isfile(prefix + '-0000.params')
+
+# --------------------- import with SymbolBlock ----------
+imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
+                                                   ['data'],
+                                                   prefix + '-0000.params')
 # BytePS: fetch and broadcast parameters
-params = model.collect_params()
-
-# if params is not None:
-#     bps.broadcast_parameters(params, root_rank=0)
+params = imported_net.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
 trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
-
-# Create loss function and train metric
-loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
-metric = mx.metric.Accuracy()
 
 # Train model
 for epoch in range(args.epochs):
@@ -140,7 +152,7 @@ for epoch in range(args.epochs):
         label = batch[1].as_in_context(context)
 
         with autograd.record():
-            output = model(data)
+            output = imported_net(data)
             loss = loss_fn(output, label)
 
         loss.backward()
@@ -160,7 +172,7 @@ for epoch in range(args.epochs):
 
     # Evaluate model accuracy
     _, train_acc = metric.get()
-    name, val_acc = evaluate(model, val_data, context)
+    name, val_acc = evaluate(imported_net, val_data, context)
     if bps.rank() == 0:
         logging.info('Epoch[%d]\tTrain: %s=%f\tValidation: %s=%f', epoch, name,
                      train_acc, name, val_acc)
