@@ -137,6 +137,7 @@ imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
                                                    ['data'],
                                                    prefix + '-0000.params',
                                                    ctx=context)
+imported_net.hybridize(static_shape=True, static_alloc=True)
 # BytePS: fetch and broadcast parameters
 params = imported_net.collect_params()
 
