@@ -119,7 +119,7 @@ class Recorder(object):
         if self.step_cnt >= self.end_step:
             if self.gradient_name_list is None:
                 self.gradient_name_list = []
-                with open(os.path.join(self.trace_dir, 'arg_namesINpara_names.txt'), 'r') as lines:
+                with open(os.path.join(os.environ.get("TRACE_DIR", ".") + "/", 'arg_namesINpara_names.txt'), 'r') as lines:
                     for line in lines:
                         name = line[:-1]
                         self.gradient_name_list.append(name)
@@ -168,6 +168,11 @@ class Recorder(object):
         ----------
         mxnet_traces : dict
             A dict containing MXNet trace results.
+
+        Returns
+        ----------
+        rst_traces : dict
+            A dict containing MXNet trace results combined with dependency info.
         '''
         index = 0
         rst_traces = {"traceEvents": []}
@@ -291,6 +296,7 @@ class Recorder(object):
         self.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
         self.idx_dict[index] = True # avoid repeatedly read
         # log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
+
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""

@@ -24,6 +24,7 @@ from mxnet import autograd, gluon, nd
 from mxnet.gluon.data.vision import MNIST
 
 import os
+from common import data_byteps
 
 
 # Higher download speed for chinese users
@@ -46,6 +47,21 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
+
+parser.add_argument('--disp-batches', type=int, default=20,
+                       help='show progress for every n batches')
+parser.add_argument('--optimizer', type=str, default='sgd',
+                       help='the optimizer type')
+parser.add_argument('--image-shape', type=str, default='1,28,28',
+                      help='the image shape feed into the network, e.g. (3,224,224)')
+parser.add_argument('--benchmark', type=int, default=1,
+                      help='if 1, then feed the network with synthetic data')
+parser.add_argument('--num-classes', type=int, default=10,
+                        help='the number of classes')
+parser.add_argument('--num-examples', type=int, default=1000000,
+                        help='the number of training examples')
+
+
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -133,17 +149,60 @@ assert os.path.isfile(prefix + '-symbol.json')
 assert os.path.isfile(prefix + '-0000.params')
 
 # --------------------- import with SymbolBlock ----------
-imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
-                                                   ['data'],
-                                                   prefix + '-0000.params',
-                                                   ctx=context)
-# BytePS: fetch and broadcast parameters
-params = imported_net.collect_params()
+# imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
+#                                                    ['data'],
+#                                                    prefix + '-0000.params',
+#                                                    ctx=context)
+imported_net = model._cached_graph[1]
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
+# BytePS: fetch and broadcast parameters
+# params = imported_net.collect_params()
+# trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=imported_net)
+
+# '''
+# --------------------- create new symbol module based on the imported net ----------
+network = mx.sym.SoftmaxOutput(data=imported_net, name='softmax')
+sym_model = mx.mod.Module(
+        context=context,
+        symbol=network
+    )
+
+eval_metrics = ['accuracy']
+batch_end_callbacks = [mx.callback.Speedometer(args.batch_size, args.disp_batches)]
+opt = mx.optimizer.create(args.optimizer, sym=network, **optimizer_params)
+opt = bps.DistributedOptimizer(opt, sym=network)
+
+(train, val) = data_byteps.get_rec_iter(args, (bps.rank(), bps.size()))
+sym_model.bind(data_shapes=train.provide_data,
+           label_shapes=train.provide_label)
+
+initializer = mx.init.Xavier(rnd_type='gaussian', factor_type="in", magnitude=2)
+sym_model.init_params(initializer)
+arg_params, aux_params = sym_model.get_params()
+if arg_params is not None:
+    bps.broadcast_parameters(arg_params, root_rank=0)
+if aux_params is not None:
+    bps.broadcast_parameters(aux_params, root_rank=0)
+sym_model.set_params(arg_params=arg_params, aux_params=aux_params)
+
+
+sym_model.fit(train,
+      begin_epoch=0,
+      num_epoch=args.epochs,
+      eval_data=val,
+      eval_metric=eval_metrics,
+      kvstore=None,
+      optimizer=opt,
+      optimizer_params=optimizer_params,
+      batch_end_callback=batch_end_callbacks,
+      epoch_end_callback=None,
+      allow_missing=True,
+      monitor=None)
+# '''
+'''
 # Train model
 for epoch in range(args.epochs):
     tic = time.time()
@@ -181,3 +240,4 @@ for epoch in range(args.epochs):
     if bps.rank() == 0 and epoch == args.epochs - 1:
         assert val_acc > 0.96, "Achieved accuracy (%f) is lower than expected\
                                 (0.96)" % val_acc
+'''
