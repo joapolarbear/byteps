@@ -142,8 +142,9 @@ imported_net.hybridize(static_shape=True, static_alloc=True)
 params = imported_net.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
+model_in_use = imported_net
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model_in_use)
 
 # Train model
 for epoch in range(args.epochs):
@@ -154,7 +155,7 @@ for epoch in range(args.epochs):
         label = batch[1].as_in_context(context)
 
         with autograd.record():
-            output = imported_net(data)
+            output = model_in_use(data)
             loss = loss_fn(output, label)
 
         loss.backward()
@@ -174,7 +175,7 @@ for epoch in range(args.epochs):
 
     # Evaluate model accuracy
     _, train_acc = metric.get()
-    name, val_acc = evaluate(imported_net, val_data, context)
+    name, val_acc = evaluate(model_in_use, val_data, context)
     if bps.rank() == 0:
         logging.info('Epoch[%d]\tTrain: %s=%f\tValidation: %s=%f', epoch, name,
                      train_acc, name, val_acc)
