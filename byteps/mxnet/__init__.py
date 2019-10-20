@@ -190,22 +190,22 @@ class Recorder(object):
                 continue
             if "_backward" in name: # backward nodes
                 name = name.split("_backward")[0]
-                if "_fwd" in name: # -- for mxnet-gluon case
-                    name = name.split("_fwd")[0]
                 if name not in self.dag.nodes:
                     index += 1
                     continue
+                if "_fwd" in name: # -- for mxnet-gluon case
+                    name = name.split("_fwd")[0]
                 innodes = ["BW." + _n for _n in self.dag.successors(name)]
                 name = "BW." + name
+            elif name not in self.dag.nodes:
+                index += 1
+                continue
             else:
                 if "_fwd" in name: # -- for mxnet-gluon case
                     name = name.split("_fwd")[0]
-                if name not in self.dag.nodes:
-                    index += 1
-                    continue
-                else: # forward nodes
-                    innodes = ["FW." + _n for _n, _ in self.dag.in_edges(name)] + self.dag.nodes[name]["var"]
-                    name = "FW." + name
+                # forward nodes
+                innodes = ["FW." + _n for _n, _ in self.dag.in_edges(name)] + self.dag.nodes[name]["var"]
+                name = "FW." + name
             args = {"name": name}
             for i, _n in enumerate(innodes):
                 args["arg%d"%i] = _n
