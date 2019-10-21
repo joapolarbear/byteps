@@ -170,11 +170,10 @@ class Recorder(object):
         mxnet_traces : dict
             A dict containing MXNet trace results.
 
-        +
-+        Returns
-+        ----------
-+        rst_traces : dict
-+            A dict containing MXNet trace results combined with dependency info.
+        Returns
+        ----------
+        rst_traces : dict
+            A dict containing MXNet trace results combined with dependency info.
         '''
         index = 0
         rst_traces = {"traceEvents": []}
@@ -190,22 +189,23 @@ class Recorder(object):
                 continue
             if "_backward" in name: # backward nodes
                 name = name.split("_backward")[0]
-                if name not in self.dag.nodes:
-                    index += 1
-                    continue
                 if "_fwd" in name: # -- for mxnet-gluon case
                     name = name.split("_fwd")[0]
+                if name not in self.dag.nodes:
+                    index += 1
+                    continue    
                 innodes = ["BW." + _n for _n in self.dag.successors(name)]
                 name = "BW." + name
-            elif name not in self.dag.nodes:
-                index += 1
-                continue
             else:
                 if "_fwd" in name: # -- for mxnet-gluon case
                     name = name.split("_fwd")[0]
-                # forward nodes
-                innodes = ["FW." + _n for _n, _ in self.dag.in_edges(name)] + self.dag.nodes[name]["var"]
-                name = "FW." + name
+                if name not in self.dag.nodes:
+                    index += 1
+                    continue
+                else:
+                    # forward nodes
+                    innodes = ["FW." + _n for _n, _ in self.dag.in_edges(name)] + self.dag.nodes[name]["var"]
+                    name = "FW." + name
             args = {"name": name}
             for i, _n in enumerate(innodes):
                 args["arg%d"%i] = _n
@@ -256,7 +256,10 @@ class Recorder(object):
                     arg_name = l.split(']=')[1].split('(')[0]
                     if arg_name not in var:
                         args.append(arg_name)
+            if "_fwd" in name:
+                name = name.split("_fwd")[0]
             for innode in args:
+                innode = innode.split("_fwd")[0] if "_fwd" in innode else innode
                 self.dag.add_edges_from([(innode, name)])
             if name in self.dag.nodes:
                 self.dag.nodes[name]["var"] = ["Comm." + e for e in var]
