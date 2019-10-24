@@ -54,7 +54,7 @@ class Recorder(object):
             return
         self._end_trace = False
         self.end_step = int(os.environ.get("TRACE_END_STEP", "10"))
-        self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+        self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_RANK") + "_" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
@@ -459,11 +459,52 @@ class DistributedTrainer(mx.gluon.Trainer):
         constructor for a list of additional supported arguments.
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, block=None):
+    def __init__(self, params, optimizer, 
+                optimizer_params=None, 
+                root_rank=0, 
+                block=None,
+                batch_data=None,
+                ctx=None,
+                data_num=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
+
+        # huhanpeng: debug
+        log("This is a new DistributedTrainer with auto profiling")
+        self.recorder = Recorder(only_symbolic=False)
+        # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
+        self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
+        if block is None:
+            raise ValueError("`block` must be given to define DistributedTrainer")
+        self.recorder.block = block
+        self.imported_net = None
+
+        if not self.recorder.end_trace():
+            if batch_data is None or ctx is None:
+                raise ValueError("`batch_data` and `ctx` must be given if you want to call auto-profiling.")
+
+            # --------------------- warmup and export ---------------
+            output = block(*batch_data)
+            prefix = "GluonModel"
+            block.export(prefix)
+            assert os.path.isfile(prefix + '-symbol.json')
+            assert os.path.isfile(prefix + '-0000.params')
+
+            # --------------------- import with SymbolBlock ----------
+            if data_num:
+                _data = ['data%d'%i for i in range(data_num)]
+            else:
+                _data = ['data']
+            self.imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
+                                                               _data,
+                                                               prefix + '-0000.params',
+                                                               ctx=ctx)
+            self.imported_net.hybridize(static_shape=True, static_alloc=True)
+            # BytePS: fetch and broadcast parameters
+            params = self.imported_net.collect_params()
+
 
         super(DistributedTrainer, self).__init__(
             params, optimizer, optimizer_params=optimizer_params, kvstore=None)
@@ -474,12 +515,11 @@ class DistributedTrainer(mx.gluon.Trainer):
         self._scale /= size()
         self.root_rank = root_rank
 
-        # huhanpeng: debug
-        log("This is a new DistributedTrainer with auto profiling")
-        self.recorder = Recorder(only_symbolic=False)
-        # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
-        self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
-        self.recorder.block = block
+    def update_model(self):
+        if self.recorder.end_trace():
+            return self.recorder.block
+        else:
+            return self.imported_net
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):

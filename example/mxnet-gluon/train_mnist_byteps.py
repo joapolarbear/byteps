@@ -121,30 +121,20 @@ model.hybridize()
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
 metric = mx.metric.Accuracy()
+optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
 
-# --------------------- warmup and export ---------------
-batch = list(train_data)[0]
-data = batch[0].as_in_context(context)
-label = batch[1].as_in_context(context)
-output = model(data)
-prefix = "GluonModel"
-model.export(prefix)
-assert os.path.isfile(prefix + '-symbol.json')
-assert os.path.isfile(prefix + '-0000.params')
-
-# --------------------- import with SymbolBlock ----------
-imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
-                                                   ['data'],
-                                                   prefix + '-0000.params',
-                                                   ctx=context)
-imported_net.hybridize(static_shape=True, static_alloc=True)
 # BytePS: fetch and broadcast parameters
-params = imported_net.collect_params()
+params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
-model_in_use = imported_net
-optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model_in_use)
+batch = list(train_data)[0]
+batch_data = batch[0].as_in_context(ctx)
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params,
+                                block=model,
+                                batch_data=batch_data, 
+                                ctx=context
+                                )
+model = trainer.update_model()
 
 # Train model
 for epoch in range(args.epochs):
@@ -155,7 +145,7 @@ for epoch in range(args.epochs):
         label = batch[1].as_in_context(context)
 
         with autograd.record():
-            output = model_in_use(data)
+            output = model(data)
             loss = loss_fn(output, label)
 
         loss.backward()
@@ -175,7 +165,7 @@ for epoch in range(args.epochs):
 
     # Evaluate model accuracy
     _, train_acc = metric.get()
-    name, val_acc = evaluate(model_in_use, val_data, context)
+    name, val_acc = evaluate(model, val_data, context)
     if bps.rank() == 0:
         logging.info('Epoch[%d]\tTrain: %s=%f\tValidation: %s=%f', epoch, name,
                      train_acc, name, val_acc)
