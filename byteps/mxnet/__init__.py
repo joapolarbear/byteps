@@ -488,9 +488,9 @@ class DistributedTrainer(mx.gluon.Trainer):
             batch = list(train_data)[0]
             data = batch[0].as_in_context(ctx)
             label = batch[1].as_in_context(ctx)
-            output = model(data)
+            output = block(data)
             prefix = "GluonModel"
-            model.export(prefix)
+            block.export(prefix)
             assert os.path.isfile(prefix + '-symbol.json')
             assert os.path.isfile(prefix + '-0000.params')
 
