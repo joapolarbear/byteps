@@ -515,7 +515,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
     def update_model(self):
         if self.recorder.end_trace():
-            return self.block
+            return self.recorder.block
         else:
             return self.imported_net
 
