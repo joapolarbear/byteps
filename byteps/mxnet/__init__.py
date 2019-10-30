@@ -117,7 +117,7 @@ class Recorder(object):
         if self.step_cnt >= self.end_step:
             if self.gradient_name_list is None:
                 self.gradient_name_list = []
-                with open(os.path.join(os.environ.get("TRACE_DIR", ".") + "/", 'arg_namesINpara_names.txt'), 'r') as lines:
+                with open(os.path.join(self.trace_dir, 'arg_namesINpara_names.txt'), 'r') as lines:
                     for line in lines:
                         name = line[:-1]
                         self.gradient_name_list.append(name)
