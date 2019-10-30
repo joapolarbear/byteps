@@ -60,18 +60,15 @@ class Recorder(object):
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
 
         """config the mxnet profile"""
-        if only_symbolic:
-            profiler.set_config(profile_symbolic=True,
-                        profile_imperative=False,
-                        profile_memory=False,
-                        profile_api=False,
-                        # profile_process=False,
-                        aggregate_stats=False, 
-                        filename=self.trace_dir+'temp.json')
-        else:
-            profiler.set_config(profile_all=True, 
-                        aggregate_stats=False, 
-                        filename=self.trace_dir+'temp.json')
+
+        profiler.set_config(profile_symbolic=True,
+                    profile_imperative=False,
+                    profile_memory=False,
+                    profile_api=False,
+                    # profile_process=False,
+                    aggregate_stats=False, 
+                    filename=self.trace_dir+'temp.json')
+
         profiler.set_state('run')
         self.dag = nx.DiGraph()
 
