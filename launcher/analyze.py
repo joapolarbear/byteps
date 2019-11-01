@@ -4,19 +4,23 @@ import argparse
 import networkx as nx
 
 
-TRACE_DIR = "/Users/huhanpeng/prof/20191009_haibinlin_profiling_debug_rst"
+# TRACE_DIR = "/Users/huhanpeng/prof/20191009_haibinlin_profiling_debug_rst"
 
 parser = argparse.ArgumentParser(description="Trace Analysis",
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 # parser.add_argument("-s", action="store_true", help="sort the output result")
-parser.add_argument("--statistic", type=bool, default=False, help="output statistic results")
-parser.add_argument("--graph", type=bool, default=False, help="show the dependency graph")
+parser.add_argument("--type", type=str, default="statistic", 
+					help="The type of analysis to process. including:\n" + 
+						"* statistic: show the statistic results\n" + 
+						"* graph: show the dependency graph\n" +)
+# parser.add_argument("--graph", type=bool, default=False, help="show the dependency graph")
+parser.add_argument("--path", type=str, require=True, help="The path of the file you want to analyze.")
 args = parser.parse_args()
 
-if args.statistic:
+if args.type == "statistic":
 	""" Read traces """
-	# traces_dir = os.environ.get("TRACE_DIR")
-	traces_path= TRACE_DIR + "/bytePS_COMM_110.json"
+	traces_dir = args.path
+	# traces_path= TRACE_DIR + "/bytePS_COMM_110.json"
 	with open(traces_path, 'r') as fp:
 		_traces = json.load(fp)
 
@@ -100,8 +104,9 @@ if args.statistic:
 		print("Category: %-10s\t The most time-consuming OP: %-30s -> %13.4f (ms)" % (cat, statistic["max_name"], statistic["max_t"] / 1000.0))
 
 
-if args.graph:
-	mygraph = nx.read_gml(TRACE_DIR + "/dag.gml")
+if args.type == "graph":
+	# mygraph = nx.read_gml(TRACE_DIR + "/dag.gml")
+	mygraph = nx.read_gml(args.path)
 	import matplotlib.pyplot as plt
 	# import pylab as plt
 	# nx.draw(mygraph, with_labels=False, font_weight='bold')
