@@ -175,20 +175,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     return Status::OK();
   }
 
-  // add for profiling
-  if (context.profile_flag) {
-    auto now = std::chrono::system_clock::now();
-    auto duration = now.time_since_epoch();
-    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-
-    BPSCommTime *ret = new BPSCommTime;
-    ret->start_t = (long long)(us.count());
-    context.comm_time.push(ret);
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                  << "record main task start time,"
-                  << " _ts=" << ret->start_t;
-  }
-
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
@@ -220,53 +206,7 @@ BPSCommTime *GetComm(const std::string &name) {
   if (context.profile_flag) context.profile_flag = false;
 
   BPSCommTime *ret;
-  if (context.comm_time.size() > 0) {
-    ret = context.comm_time.front();
-    context.comm_time.pop();
-    ret->end = false;
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                    << "Collect communication traces of main task, "
-                    << " ret->key=" << ret->key
-                    << " ret->type=" << ret->type;
-    return ret;
-  } else {
-    if (context.part_comm_time.empty()) {
-      ret = new BPSCommTime;
-      ret->start_t = 0;
-      ret->dur = 0;
-      ret->end = true;
-      ret->key = -1;
-      ret->type = -1;
-      // *ret = {0, 0, true, -1, -1};
-      return ret;
-    }
-    auto part_id = context.part_comm_time.begin()->first;
-    auto& type2part_comm_time = context.part_comm_time.begin()->second;
-    BPS_CHECK(!type2part_comm_time.empty()) << "type2part_comm_time should not be empty";
-
-    auto type = type2part_comm_time.begin()->first;
-    auto& _part_comm_time_queue = type2part_comm_time.begin()->second;
-    BPS_CHECK(_part_comm_time_queue.size() > 0) << "_part_comm_time_queue should not be empty";
-
-    ret = _part_comm_time_queue.front();
-    _part_comm_time_queue.pop();
-    ret->end = false;
-
-    if (_part_comm_time_queue.size() == 0) {
-      // if the _part_comm_time_queue of part_id --> type is empty, delete this type for this part_id
-      type2part_comm_time.erase(type);
-      if (type2part_comm_time.empty()) {
-        // if the unordered_map becomes empty, all the traces of this part_id has been read, delete this part_id
-        context.part_comm_time.erase(part_id);
-      }
-    }
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                    << "Collect communication traces, "
-                    << " ret->key=" << ret->key
-                    << " ret->type=" << ret->type;
-
-    return ret;
-  }
+  return ret;
   // if (BytePSGlobal::GetRank() == 0){
   //   std::cout << "In operations.cc, GetComm, _ts: " << ret->start_t << " dur: " << dur << " CNT: " << context.cnt << std::endl;
   //   // std::cout << "In operations.cc, get p: " << ret << std::endl;

@@ -130,12 +130,12 @@ class Recorder(object):
             self.step_cnt += 1
             
         if self.step_cnt >= self.end_step:
-            if self.gradient_name_list is None:
-                self.gradient_name_list = []
-                with open(os.path.join(self.trace_dir, 'arg_namesINpara_names.txt'), 'r') as lines:
-                    for line in lines:
-                        name = line[:-1]
-                        self.gradient_name_list.append(name)
+            # if self.gradient_name_list is None:
+            #     self.gradient_name_list = []
+            #     with open(os.path.join(self.trace_dir, 'arg_namesINpara_names.txt'), 'r') as lines:
+            #         for line in lines:
+            #             name = line[:-1]
+            #             self.gradient_name_list.append(name)
             return True
         else:
             return False            
@@ -296,7 +296,8 @@ class Recorder(object):
             return
 
         # -- read communication traces offline
-        _ts_dur_list = get_comm_time(tensor, name) 
+        # _ts_dur_list = get_comm_time(tensor, name) 
+        _ts_dur_list = []
 
         def return_event(index, _ts, _dur, _key, _type):
             if _ts == 0:
