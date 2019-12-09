@@ -102,11 +102,13 @@ class Recorder(object):
         if self.step_cnt == self.start_step - 1:
             profiler.set_state('run')
 
-        self.dag = nx.DiGraph()
+        self.dag = None
+        self.loss_dag = []
 
         #! symbol/block, used to get the dependency info, at least one should be given
         self.block = None
         self.symbol = None
+        self.loss = None
 
     def scheduler(self, index, _check_stop=False):
         '''A scheduler, manage the counter for each gradient, `self.idx_dict` is 
@@ -188,6 +190,14 @@ class Recorder(object):
                 raise ValueError("Waiting Time Out, wait %s traces for %f s" % (name, wait_cnt * WAIT_TIME))
         BYTEPS_TRACE_DEBUG("Wait %s traces for %f s" % (name, wait_cnt * WAIT_TIME))
 
+    def byteps_collect_step(self):
+        def step_ready():
+            return os.path.exists(os.path.join(self.trace_dir, "step.json"))
+        self.wait_for_trace(step_ready, "STEP")
+        with open(os.path.join(self.trace_dir, "step.json"), 'r') as f:
+            rst_traces = json.load(f)
+        self.time_dict["traceEvents"] += rst_traces["traceEvents"]
+
     def byteps_collect_io(self):
         def io_ready():
             return os.path.exists(os.path.join(self.trace_dir, "io.json"))
@@ -228,19 +238,22 @@ class Recorder(object):
 
         #! Get the dependency graph, adapt to DistributedOptimizer and DistributedTrainer
         if self.symbol is not None:
-            self.gen_dag(self.symbol.debug_str())
+            self.dag = self.gen_dag(self.symbol.debug_str(), _main=True)      
         elif self.block is not None:
             symbol = self.block._cached_graph[1]
-            self.gen_dag(symbol.debug_str())
+            self.dag = self.gen_dag(symbol.debug_str(), _main=True)
+            self.loss_dag = [(self.gen_dag(l._cached_graph[1].debug_str(), _str_name="loss%d"%i) if l is not None else None) for i, l in enumerate(self.loss)]
+            self.combine_loss_dag()
         else:
             raise ValueError("A symbol or model/block must be given when defining DistributedOptimizer/DistributedTrainer.")
 
         #! Apply dependencies in self.dag to the mxnet traces.
         rst_traces = self.byteps_collect_computation(mxnet_traces)
 
-        #! Collect communication traces and IO traces and apply dependency
+        #! Collect communication traces, IO traces and STEP traces and apply dependency
         self.byteps_collect_io()
         self.byteps_collect_comm() 
+        self.byteps_collect_step()
 
         #! Combine two kinds of trace and output them
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
@@ -318,7 +331,7 @@ class Recorder(object):
 
         return rst_traces
 
-    def gen_dag(self, s):
+    def gen_dag(self, s, _str_name="symbol_debug_str", _main=False):
         """Construct a DAG from the mxnet info
 
         Parameters:
@@ -326,19 +339,23 @@ class Recorder(object):
         s : str
             Must follow the standard chrome trace format and not None.
         """
-        with open(self.trace_dir + "symbol_debug_str.txt", "w") as f:
+        with open(self.trace_dir + _str_name + ".txt", "w") as f:
             f.write(s)
+        _dag = nx.DiGraph()
         blocks = s.split("--------------------\n")
+        
         #! 3. FW -> OUTPUT and 4. OUTPUT -> BW
         first_ls = blocks[0].split('\n')
+        output_cnt = 0
         for i in range(len(first_ls)):
             if "Variable:" in first_ls[i]:
                 break
             if "output[" in first_ls[i]:
                 output_node = first_ls[i].split(']=')[1].split('(')[0]
                 output_node = output_node.split("_fwd")[0] if "_fwd" in output_node else output_node
-                self.dag.add_edge("FW." + output_node, "OUTPUT")
-                self.dag.add_edge("OUTPUT", "BW." + output_node)
+                _dag.add_edge("FW." + output_node, "OUTPUT%d"%output_cnt)
+                _dag.add_edge("OUTPUT%d"%output_cnt, "BW." + output_node)
+                output_cnt += 1
 
         for i in range(1, len(blocks)):
             prev_block = blocks[i-1]
@@ -365,16 +382,40 @@ class Recorder(object):
             for innode in args:
                 innode = innode.split("_fwd")[0] if "_fwd" in innode else innode
                 #! 2. FW -> FW and 5. BW -> BW
-                self.dag.add_edge("FW." + innode, "FW." + name)
-                self.dag.add_edge("BW." + name, "BW." + innode)
+                _dag.add_edge("FW." + innode, "FW." + name)
+                _dag.add_edge("BW." + name, "BW." + innode)
             for _var in var:
                 if "data" in _var:
-                    #! 1. IO -> FW
-                    self.dag.add_edge("I/O", "FW." + name)
+                    #! 1. IO -> FW, 8. BW -> STEP -> FW
+                    _dag.add_edge("I/O", "FW." + name)
+                    _dag.add_edge("BW." + name, "STEP")
+                    _dag.add_edge("STEP", "FW." + name)
                 else:
                     #! 7. Comm -> FW and 6. BW -> Comm
-                    self.dag.add_edge("Comm." + _var, "FW." + name)
-                    self.dag.add_edge("BW." + name, "Comm." + _var)
+                    _dag.add_edge("Comm." + _var, "STEP")
+                    _dag.add_edge("BW." + name, "Comm." + _var)
+        return _dag
+
+    def combine_loss_dag(self):
+        for idx, ld in enumerate(self.loss_dag):
+            if ld is None:
+                continue
+            output_name = "OUTPUT%d"%idx
+            output_node = [u for u, _ in self.dag.in_edges(output_name)][0]
+            first_bw_node = list(self.dag.successors(output_name))[0]
+            for u, v in ld.edges():
+                if "I/O" in u:
+                    self.dag.add_edge(output_node, v)
+                    self.dag.add_edge("BW." + v.split("FW.")[1], first_bw_node)
+                elif "OUTPUT" in u:
+                    self.dag.add_edge(output_name, v)
+                elif "OUTPUT" in v:
+                    self.dag.add_edge(u, output_name)
+                else: 
+                    self.dag.add_edge(u, v)
+
+        self.loss_dag = None
+
 
     def end4index(self, index, tensor, name):
         ''' Offline collect the communication trace results of gradient `index`
@@ -546,7 +587,8 @@ class DistributedTrainer(mx.gluon.Trainer):
     def __init__(self, params, optimizer, 
                 optimizer_params=None, 
                 root_rank=0, 
-                block=None):
+                block=None,
+                **kwargs):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
@@ -563,6 +605,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         if block is None:
             raise ValueError("`block` must be given to define DistributedTrainer")
         self.recorder.block = block
+        self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(

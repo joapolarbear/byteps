@@ -3,19 +3,20 @@ import time
 import json
 import threading
 
-class IORecorder(object):
-    def __init__(self):
+class TimtLineRecorder(object):
+    def __init__(self, _trace_name, _name):
         if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
             self._end_trace = True
         self._end_trace = False
         self.trace_dir = os.environ.get("BYTEPS_TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
-        self.trace_path = self.trace_dir + 'io.json'
+        self.trace_path = self.trace_dir + _trace_name
         self.ts = []
         self.dur = []
+        self._name = _name
 
-    def io_start(self):
+    def start(self):
         if self._end_trace:
             return
         if os.environ.get("BYTEPS_TRACE_STATUS", "") == "END":
@@ -24,7 +25,7 @@ class IORecorder(object):
             return
         self.ts.append(time.time() * 1000000.0)
 
-    def io_end(self):
+    def end(self):
         if self._end_trace:
             return
         assert len(self.ts) == len(self.dur) + 1 or len(self.ts) == len(self.dur)
@@ -37,14 +38,14 @@ class IORecorder(object):
             for i in range(len(self.dur)):
                 _ts, _dur = self.ts[i], self.dur[i]
                 _event = {
-                    "name": "I/O",
+                    "name": self._name,
                     "ts": _ts,
                     "dur": _dur,
                     "ph": "X",
-                    "cat": "I/O",
-                    "pid": "I/O",
+                    "cat": self._name,
+                    "pid": self._name,
                     "args": {
-                        "name":"I/O"
+                        "name":self._name
                     }
                 }
                 rst_traces["traceEvents"].append(_event)
@@ -56,10 +57,14 @@ class IORecorder(object):
         t = threading.Thread(target=_output, args=(self,))
         t.start()
 
+########################################################
+#      Used to wrap IO iterator
+########################################################
+
 class BPSMultiWorkerIter(object):
     def __init__(self, data_iter):
         self._data_iter = data_iter
-        self.recorder = IORecorder()
+        self.recorder = TimtLineRecorder('io.json', 'I/O')
 
     def _push_next_dataset(self):
         self._data_iter._push_next_dataset()
@@ -71,9 +76,9 @@ class BPSMultiWorkerIter(object):
         return self._data_iter._next_dataset()
 
     def __next__(self):
-        self.recorder.io_start()
+        self.recorder.start()
         ret = self._data_iter.__next__()
-        self.recorder.io_end()
+        self.recorder.end()
         return ret
 
     def next(self):
@@ -84,8 +89,6 @@ class BPSMultiWorkerIter(object):
 
     def __len__(self):
         return self._data_iter.__len__()
-
-
 
 class BPSDatasetLoader(object):
     def __init__(self, dataloader):
@@ -98,7 +101,23 @@ class BPSDatasetLoader(object):
         return self._dataloader.__len__()
 
 
+########################################################
+#       Trainer, used to wrap the process
+#            of updating local model
+########################################################
 
+class BPSTrainer(object):
+    def __init__(self, _trainer):
+        self._trainer = _trainer
+        self.recorder = TimtLineRecorder('step.json', 'STEP')
+
+    def backward(self, *args, **kwargs):
+        self._trainer.backward(*args, **kwargs)
+
+    def step(self, *args, **kwargs):
+        self.recorder.start()
+        self._trainer.step(*args, **kwargs)
+        self.recorder.end()
 
 
 
