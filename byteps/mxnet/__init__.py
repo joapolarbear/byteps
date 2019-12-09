@@ -282,11 +282,28 @@ class Recorder(object):
         index = 0
         pid = None
         rst_traces = {"traceEvents": []}
-        while index < len(mxnet_traces["traceEvents"]):
-            trace = mxnet_traces["traceEvents"][index]
-            if trace["ph"] != 'B' and trace["ph"] != 'b':
-                index += 1
-                continue
+        traces = sorted(mxnet_traces["traceEvents"], key=lambda x: x["ts"], reverse=False)
+        def get_next_traces(traces, index, begin=True):
+            while True:
+                if index < len(traces):
+                    index += 1
+                    if (begin and (trace["ph"] == 'B' or trace["ph"] == 'b')) or (not begin and (next_trace["ph"] == 'e' or next_trace["ph"] == 'E')):
+                        return traces[index-1], index
+                else:
+                    return None, -1
+        while True:
+            trace, index = get_next_traces(traces, index, begin=True)
+            if index == -1:
+                break
+
+
+
+        # while index < len(traces):
+        #     trace = traces[index]
+        #     if trace["ph"] != 'B' and trace["ph"] != 'b':
+        #         index += 1
+        #         continue
+
             name = trace["name"]
             #! add for mxnet-gluon case
             if "name=" in name:
@@ -318,16 +335,20 @@ class Recorder(object):
             trace["ph"] = "X"
 
             #! each 'B/b' type event is followed with a 'E/e' event, skip them
-            while True: 
-                index += 1
-                next_trace = mxnet_traces["traceEvents"][index]
-                if next_trace["ph"] == 'e' or next_trace["ph"] == 'E':
-                    break
+            next_trace, index = get_next_traces(traces, index, begin=False)
+            assert index != -1
             if name.split(".")[1] not in next_trace["name"]:
                 raise ValueError("'b/B' events must be followed with 'e/E' events!!!")
             trace["dur"] = next_trace['ts'] - trace['ts']
             rst_traces["traceEvents"].append(trace)
-            index += 1
+
+            #! for loss nodes
+            if last_output_node():
+                while True:
+                    output_trace, index = get_next_traces(traces, index, begin=True)
+                    if index == -1:
+                        break
+                    else:
 
         return rst_traces
 
