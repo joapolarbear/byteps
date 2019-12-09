@@ -190,14 +190,6 @@ class Recorder(object):
                 raise ValueError("Waiting Time Out, wait %s traces for %f s" % (name, wait_cnt * WAIT_TIME))
         BYTEPS_TRACE_DEBUG("Wait %s traces for %f s" % (name, wait_cnt * WAIT_TIME))
 
-    def byteps_collect_step(self):
-        def step_ready():
-            return os.path.exists(os.path.join(self.trace_dir, "step.json"))
-        self.wait_for_trace(step_ready, "STEP")
-        with open(os.path.join(self.trace_dir, "step.json"), 'r') as f:
-            rst_traces = json.load(f)
-        self.time_dict["traceEvents"] += rst_traces["traceEvents"]
-
     def byteps_collect_io(self):
         def io_ready():
             return os.path.exists(os.path.join(self.trace_dir, "io.json"))
@@ -253,7 +245,6 @@ class Recorder(object):
         #! Collect communication traces, IO traces and STEP traces and apply dependency
         self.byteps_collect_io()
         self.byteps_collect_comm() 
-        self.byteps_collect_step()
 
         #! Combine two kinds of trace and output them
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
@@ -279,43 +270,74 @@ class Recorder(object):
         rst_traces : dict
             A dict containing MXNet trace results combined with dependency info.
         '''
-        index = 0
+        
         pid = None
         rst_traces = {"traceEvents": []}
-        traces = sorted(mxnet_traces["traceEvents"], key=lambda x: x["ts"], reverse=False)
-        def get_next_traces(traces, index, begin=True):
-            while True:
-                if index < len(traces):
-                    index += 1
-                    if (begin and (trace["ph"] == 'B' or trace["ph"] == 'b')) or (not begin and (next_trace["ph"] == 'e' or next_trace["ph"] == 'E')):
-                        return traces[index-1], index
-                else:
-                    return None, -1
-        while True:
-            trace, index = get_next_traces(traces, index, begin=True)
-            if index == -1:
-                break
 
-
-
-        # while index < len(traces):
-        #     trace = traces[index]
-        #     if trace["ph"] != 'B' and trace["ph"] != 'b':
-        #         index += 1
-        #         continue
-
-            name = trace["name"]
-            #! add for mxnet-gluon case
-            if "name=" in name:
-                name = name.split("name=")[1].split(";")[0]
-            #! backward nodes or forward nodes
-            name = "BW." + name.split("_backward")[0] if "_backward" in name else "FW." + name
-            name = name.split("_fwd")[0] if "_fwd" in name else name
-
-            #! Only collect nodes in the dag
-            #! TODO: some trvial nodes may also be useful
-            if name not in self.dag.nodes:
+        index = 0
+        traces = []
+        while index < len(mxnet_traces["traceEvents"]):
+            if "ts" not in mxnet_traces["traceEvents"][index]:
                 index += 1
+                continue
+            trace = mxnet_traces["traceEvents"][index]
+            if trace["ph"] == 'B' or trace["ph"] == 'b':
+                next_trace = mxnet_traces["traceEvents"][index+1]
+                assert trace["name"] == next_trace["name"]
+                trace["dur"] = next_trace['ts'] - trace['ts']
+                trace["ph"] = "X"
+                traces.append(trace)
+                index += 2
+            else:
+                index += 1
+
+        traces = sorted(traces, key=lambda x: x["ts"], reverse=False)
+
+        def _preprocess(_name):
+            '''Fetch and handle the trace name'''
+            #! add for mxnet-gluon case
+            if "name=" in _name:
+                _name = _name.split("name=")[1].split(";")[0]
+            #! backward nodes or forward nodes
+            _name = "BW." + _name.split("_backward")[0] if "_backward" in _name else "FW." + _name
+            _name = _name.split("_fwd")[0] if "_fwd" in _name else _name
+            return _name 
+
+        IGNORE_OP = ["DeleteVariable", "sum", "_plus_scalar", 
+                "_copyto_GPU2GPU", "broadcast_add", 
+                "Reshape", "Cast", "_arange", "elemwise_add"]
+
+        def real_last_bw_name():
+            statue = "init"
+            _index = 0
+            tmp = None
+            while _index < len(traces):
+                trace = traces[_index]
+                _index += 1
+                name = _preprocess(trace["name"])
+                if name not in self.dag.nodes:
+                    continue
+                if statue == "init" and "FW" in name:
+                    statue = "fw"
+                elif statue == "fw" and "BW" in name:
+                    statue = "bw"
+                    tmp = name
+                elif statue == "bw" and "BW" in name:
+                    tmp = name
+                elif statue == "bw" and "FW" in name:
+                    statue = "fw"
+                    return tmp
+        _real_last_bw_name = real_last_bw_name()
+
+        index = 0
+        while index < len(traces):
+            trace = traces[index]
+            index += 1
+            name = _preprocess(trace["name"])       
+
+            if name not in self.dag.nodes:
+                #! Only collect nodes in the dag
+                #! TODO: some trvial nodes may also be useful
                 continue
 
             #! deduplication
@@ -323,7 +345,6 @@ class Recorder(object):
             if pid is None:
                 pid = trace["pid"]
             elif pid != trace["pid"]:
-                index += 1
                 continue
 
             innodes = [_n for _n, _ in self.dag.in_edges(name)]
@@ -332,23 +353,40 @@ class Recorder(object):
                 args["input%d"%i] = _n
             trace["name"] = name
             trace["args"] = args
-            trace["ph"] = "X"
-
-            #! each 'B/b' type event is followed with a 'E/e' event, skip them
-            next_trace, index = get_next_traces(traces, index, begin=False)
-            assert index != -1
-            if name.split(".")[1] not in next_trace["name"]:
-                raise ValueError("'b/B' events must be followed with 'e/E' events!!!")
-            trace["dur"] = next_trace['ts'] - trace['ts']
             rst_traces["traceEvents"].append(trace)
 
-            #! for loss nodes
-            if last_output_node():
-                while True:
-                    output_trace, index = get_next_traces(traces, index, begin=True)
-                    if index == -1:
-                        break
+            #! if all STEP-dependent BW nodes have arrived, process traces til FW
+            # if len(last_bw_nodes) == 0:
+            if name == _real_last_bw_name:
+                _step_ts = None
+                _step_dur = 0
+                while index < len(traces):
+                    _trace = traces[index]
+                    if pid != _trace["pid"]:
+                        index += 1
                     else:
+                        name = _preprocess(_trace["name"])
+                        if name in self.dag.nodes:
+                            break
+                        index += 1
+                        if _trace["name"] in IGNORE_OP or "operator" != _trace["cat"]:
+                            pass
+                        else:
+                            if _step_ts is None:
+                                _step_ts = _trace["ts"]
+                            _step_dur = _trace["ts"] + _trace["dur"] - _step_ts
+
+                rst_traces["traceEvents"].append({
+                    "name": "STEP",
+                    "ts": _step_ts,
+                    "dur": _step_dur,
+                    "ph": "X",
+                    "cat": "operator",
+                    "pid": pid,
+                    "args": {
+                        "name":"STEP"
+                    }
+                })
 
         return rst_traces
 
@@ -390,6 +428,7 @@ class Recorder(object):
             if 'Name' not in ls[0]:
                 continue
             name = ls[0].split('Name=')[1]
+            op = ls[0].split(',')[0].split("Op:")[1]
             args = []
             for l in ls:
                 if "arg[" in l:
@@ -400,6 +439,8 @@ class Recorder(object):
                 name = name.split("_fwd")[0]
 
             #! --------- construct the graph ----
+            _dag.add_node("FW." + name, op=op)
+            _dag.add_node("BW." + name, op=op)
             for innode in args:
                 innode = innode.split("_fwd")[0] if "_fwd" in innode else innode
                 #! 2. FW -> FW and 5. BW -> BW
@@ -407,10 +448,11 @@ class Recorder(object):
                 _dag.add_edge("BW." + name, "BW." + innode)
             for _var in var:
                 if "data" in _var:
-                    #! 1. IO -> FW, 8. BW -> STEP -> FW
                     _dag.add_edge("I/O", "FW." + name)
-                    _dag.add_edge("BW." + name, "STEP")
-                    _dag.add_edge("STEP", "FW." + name)
+                    if _main:
+                        #! 1. IO -> FW, 8. BW -> STEP -> FW                  
+                        _dag.add_edge("BW." + name, "STEP")
+                        _dag.add_edge("STEP", "FW." + name)
                 else:
                     #! 7. Comm -> FW and 6. BW -> Comm
                     _dag.add_edge("Comm." + _var, "STEP")
