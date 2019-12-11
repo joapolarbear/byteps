@@ -24,13 +24,12 @@ Then analyze the timeline using `chrome://tracing`.
 For example, below shows the profile result of a distributed training case (2 workers and 2 servers). In ps-lite, worker ranks are 9, 11, 13, and etc. So `push-9` and `push-11`  mean the push requests from the first worker and second worker, respectively. From this figure, we can observe that the first worker is slower than the second one. Similarly, you can find whether there is a consistent straggler for large scale training.
 ![profile](https://user-images.githubusercontent.com/13852819/65565724-53bb3b80-df83-11e9-8490-6bb590d6fd18.png)
 
-
 ---
 
 
 ## Usage For Workers
 
-Use the following environment variables to enable profiling the operations runing on workers, including computation, communication and I/O operations: 
+Use the following environment variables to enable profiling the operations runing on workers, including computation, communication operations: 
 
 ``` python
 "BYTEPS_TRACE_ON" = "1"
@@ -41,6 +40,21 @@ Use the following environment variables to enable profiling the operations runin
 
 First `BYTEPS_TRACE_ON` should be set to `1` to enable profiling communication traces. `BYTEPS_TRACE_START_STEP` and `BYTEPS_TRACE_END_STEP` decides the step interval we want to profile, traces from step `BYTEPS_TRACE_START_STEP` to step `BYTEPS_TRACE_END_STEP` steps will be automatically collected and the result traces will be output in the chrome trace format. `BYTEPS_TRACE_DIR` denotes the path you want to store traces. 
 
+Besides, when using the `bps.DistributedTrainer()` in your program, two additional arguments should be given: 1) `block`, class `mxnet.gluon.HybridBlock`, the model to train and has called `hybridize()`. 2) `loss`, a list of `mxnet.gluon.Loss`, the loss of the model, each of which must has called `hybridize()`. Below shows an example.
+
+```python
+trainer = bps.DistributedTrainer(param_dict, args.optimizer, optim_params, block=model.bert, loss=[None, None, model.nsp_loss, model.mlm_loss])
+```
+Note that a model may have multiple outputs and multiple loss nodes, here the loss node list must correspond to the order of outputs used for the loss. The order can be found in the first few lines of `block.debug_str()` . If the list is empty or all of the elements are `None`, loss nodes will be ignored.
+
+To further collect I/O operations, you should wrap your `DataLoader` with `byteps.common.dataloader`, below shows an example,
+
+```python
+from byteps.common.dataloader import BPSDatasetLoader
+data_train = BPSDatasetLoader(data_train)
+data_train_iter = iter(data_train)
+```
+
 The result directory is organized as follows. 
 ``` tex
 traces/
@@ -50,6 +64,8 @@ traces/
 │   ├── dag.gml
 │   ├── io.json
 │   ├── symbol_debug_str.txt
+│   ├── loss2.txt
+│   ├── loss3.txt
 │   └── temp.json
 └── 1
     ├── bps_trace_local_rank1_20step.json
@@ -65,7 +81,8 @@ Here, `traces/` is the trace directory we defined using `BYTEPS_TRACE_DIR`. `tra
 * `io.json`: the final trace file containing the I/O traces;
 * `temp.json`: a JSON file dumped using MXNet profiler, containing all computation traces;
 * **`bps_trace_local_rank0_20step.json`**: the final trace file which combines computation, communication and I/O traces;
-* `symbol_debug_str.txt`:  A file containing the symbol information.
+* `symbol_debug_str.txt`:  A file containing the model symbol information (`block.debug_str()`).
+* `loss2.txt`:  A file containing the loss symbol information, here `2` is the index of output used by the loss function. 
 * `dag.gml`: a completed graph which contains `FW (forward)`, `BW (backward)`, `Comm (communication)`, and `I/O ` nodes, besides special nodes like `OUTPUT` and `Sync` are also included. `FW` ends with `OUTPUT` and `BW` starts with `OUTPUT`. All `Comm` nodes is forced to connected with the `Sync` node, instead of original respective `FW` nodes, otherwise, the Graph would not be a DAG.
 
 ### Visualization
