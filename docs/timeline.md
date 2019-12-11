@@ -30,7 +30,7 @@ For example, below shows the profile result of a distributed training case (2 wo
 
 ## Usage For Workers
 
-Use the following environment variables to enable profiling the operations runing on workers, including computation, communication and I/O operations: 
+Use the following environment variables to enable profiling the operations runing on workers, including computation, communication: 
 
 ``` python
 "BYTEPS_TRACE_ON" = "1"
@@ -40,6 +40,14 @@ Use the following environment variables to enable profiling the operations runin
 ```
 
 First `BYTEPS_TRACE_ON` should be set to `1` to enable profiling communication traces. `BYTEPS_TRACE_START_STEP` and `BYTEPS_TRACE_END_STEP` decides the step interval we want to profile, traces from step `BYTEPS_TRACE_START_STEP` to step `BYTEPS_TRACE_END_STEP` steps will be automatically collected and the result traces will be output in the chrome trace format. `BYTEPS_TRACE_DIR` denotes the path you want to store traces. 
+
+To further collect I/O operations, you should wrap your `DataLoader` with `byteps.common.dataloader`, below shows an example,
+
+```python
+from byteps.common.dataloader import BPSDatasetLoader
+data_train = BPSDatasetLoader(data_train)
+data_train_iter = iter(data_train)
+```
 
 The result directory is organized as follows. 
 ``` tex
