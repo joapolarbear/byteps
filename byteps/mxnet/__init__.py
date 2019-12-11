@@ -177,7 +177,7 @@ class Recorder(object):
         return self._end_trace
 
     def wait_for_trace(self, ready, name):
-        WAIT_TIME_OUT = 20
+        WAIT_TIME_OUT = 10
         WAIT_TIME = 0.1
         wait_cnt = 0.0
         while True:
@@ -375,18 +375,18 @@ class Recorder(object):
                             if _step_ts is None:
                                 _step_ts = _trace["ts"]
                             _step_dur = _trace["ts"] + _trace["dur"] - _step_ts
-
-                rst_traces["traceEvents"].append({
-                    "name": "STEP",
-                    "ts": _step_ts,
-                    "dur": _step_dur,
-                    "ph": "X",
-                    "cat": "operator",
-                    "pid": pid,
-                    "args": {
-                        "name":"STEP"
-                    }
-                })
+                if _step_ts is not None:
+                    rst_traces["traceEvents"].append({
+                        "name": "STEP",
+                        "ts": _step_ts,
+                        "dur": _step_dur,
+                        "ph": "X",
+                        "cat": "operator",
+                        "pid": pid,
+                        "args": {
+                            "name":"STEP"
+                        }
+                    })
 
         return rst_traces
 
