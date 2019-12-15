@@ -65,7 +65,7 @@ std::string GetOpName(std::string prefix, char* name) {
 inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
   if (status.ok()) {
     on_complete();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::nanoseconds(10000));
   } else {
     auto error = dmlc::Error(status.reason());
     on_complete(&error);
