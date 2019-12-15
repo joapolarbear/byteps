@@ -535,6 +535,7 @@ bool RunPullLoopOnce() {
     BytePSGlobal::GetPS()->ZPull(pskv.keys, vals, &pskv.lens, cmd,
                                  [vals, task, q]() {
                                    delete vals;
+                                   std::this_thread::sleep_for(std::chrono::nanoseconds(100000));
                                    FinishOrProceed(task);
                                  });
   } else {

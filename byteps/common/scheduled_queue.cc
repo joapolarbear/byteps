@@ -120,7 +120,6 @@ void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
     ret->type = this_op; 
     context->part_comm_time[task->key][this_op].push(ret);
   }
-  std::this_thread::sleep_for(std::chrono::nanoseconds(100000));
 }
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
