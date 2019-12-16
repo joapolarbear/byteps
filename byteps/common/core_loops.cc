@@ -29,9 +29,6 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
   BPS_CHECK_GE(queue_list.size(), 1);
   auto this_op = queue_list[0];
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  if (this_op == REDUCE || this_op == BROADCAST){
-    std::this_thread::sleep_for(std::chrono::nanoseconds(100000));
-  }
   q->reportFinish(task->len);
   if (BytePSGlobal::IsTensorSampled(task->key)) {
     // We only support sampling
