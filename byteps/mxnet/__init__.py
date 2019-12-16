@@ -669,6 +669,9 @@ class DistributedTrainer(mx.gluon.Trainer):
             raise ValueError("`block` must be given to define DistributedTrainer")
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
+        def delay_synthetic(*args, **kwargs):
+            time.sleep(0.1)
+        self.recorder.block.register_forward_hook(delay_synthetic)
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(
