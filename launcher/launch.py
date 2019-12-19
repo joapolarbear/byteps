@@ -49,6 +49,14 @@ def worker(local_rank, local_size, command):
         trace_path = os.path.join(os.environ.get("BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
+
+    if local_rank == 0:
+        WORKLOAD = 1
+        for i in range(WORKLOAD):
+            subprocess.check_call("python3 /usr/local/byteps/example/mxnet-gluon/train_mnist_byteps.py \
+                            --epochs 10000 \
+                            --backend device \
+                            --gpu %d &" % local_rank, stdout=sys.stdout, stderr=sys.stderr, shell=True)
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":

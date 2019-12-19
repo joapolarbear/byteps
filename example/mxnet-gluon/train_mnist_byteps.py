@@ -45,6 +45,10 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
+parser.add_argument('--backend', type=str, default="byteps",
+                    help='backend')
+parser.add_argument('--gpu', type=int, default=None,
+                    help='gpu to run')
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -101,14 +105,17 @@ def evaluate(model, data_iter, context):
 # Load training and validation data
 train_data, val_data, train_size = get_mnist_iterator()
 
-train_data = BPSDatasetLoader(train_data)
-
-# Initialize BytePS
-bps.init()
-
-# BytePS: pin context to local rank
-context = mx.cpu(bps.local_rank()) if args.no_cuda else mx.gpu(bps.local_rank())
-num_workers = bps.size()
+backend = args.backend
+if backend == "byteps":
+    train_data = BPSDatasetLoader(train_data)
+    # Initialize BytePS
+    bps.init()
+    # BytePS: pin context to local rank
+    context = mx.cpu(bps.local_rank()) if args.no_cuda else mx.gpu(bps.local_rank())
+    num_workers = bps.size()
+else:
+    context = mx.gpu(int(args.gpu))
+    num_workers = 1
 
 # Build model
 model = conv_nets()
@@ -117,7 +124,7 @@ model.cast(args.dtype)
 # Initialize parameters
 model.initialize(mx.init.MSRAPrelu(), ctx=context)
 # if bps.rank() == 0:
-model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(bps.local_rank())))
+model.summary(nd.ones((1, 1, 28, 28), ctx=context))
 model.hybridize()
 
 # BytePS: fetch and broadcast parameters
@@ -130,8 +137,11 @@ loss_fn.hybridize(static_alloc=True, static_shape=True)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model, loss=[loss_fn])
 
+if backend == "byteps":
+    trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model, loss=[loss_fn])
+else:
+    trainer = mx.gluon.Trainer(params, "sgd", optimizer_params)
 # Train model
 for epoch in range(args.epochs):
     tic = time.time()
@@ -153,7 +163,8 @@ for epoch in range(args.epochs):
             logging.info('[Epoch %d Batch %d] Training: %s=%f' %
                          (epoch, i, name, acc))
 
-    if bps.rank() == 0:
+    log_flag = (backend == "byteps" and bps.rank() == 0) or backend != "byteps"
+    if log_flag:
         elapsed = time.time() - tic
         speed = train_size * num_workers / elapsed
         logging.info('Epoch[%d]\tSpeed=%.2f samples/s\tTime cost=%f',
@@ -162,10 +173,10 @@ for epoch in range(args.epochs):
     # Evaluate model accuracy
     _, train_acc = metric.get()
     name, val_acc = evaluate(model, val_data, context)
-    if bps.rank() == 0:
+    if log_flag:
         logging.info('Epoch[%d]\tTrain: %s=%f\tValidation: %s=%f', epoch, name,
                      train_acc, name, val_acc)
 
-    if bps.rank() == 0 and epoch == args.epochs - 1:
+    if epoch == args.epochs - 1 and (log_flag):
         assert val_acc > 0.96, "Achieved accuracy (%f) is lower than expected\
                                 (0.96)" % val_acc
