@@ -132,5 +132,21 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
   return;
 }
 
+void doSleep(void *pInt, void* on_complete_ptr, void* param) {
+  int delay = *static_cast<int *>(pInt);
+  std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000));
+}
+
+extern "C" int byteps_mxnet_sleep(int delay) { 
+  MX_API_BEGIN();
+  MXEnginePushAsync(doSleep, (void *)(&delay),
+                      nullptr, &MX_EXEC_CTX,
+                      nullptr, 0,
+                      nullptr, 0,
+                      &MX_FUNC_PROP, 0,
+                      "Sleep");
+  MX_API_END();
+}
+
 }  // namespace mxnet
 }  // namespace byteps

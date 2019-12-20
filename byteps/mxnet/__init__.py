@@ -26,6 +26,8 @@ from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
+from byteps.mxnet.ops import byteps_sleep
+
 # append for auto_profiling
 import logging
 import sys, os
@@ -669,10 +671,9 @@ class DistributedTrainer(mx.gluon.Trainer):
             raise ValueError("`block` must be given to define DistributedTrainer")
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
-        def delay_synthetic(*args, **kwargs):
-            time.sleep(0.01)
-        for cld in self.recorder.block._children.values():
-            cld.register_forward_hook(delay_synthetic)
+        # def delay_synthetic(*args, **kwargs):
+        #     time.sleep(0.01)
+        # self.recorder.block.register_op_hook(delay_synthetic, monitor_all=False)
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(
@@ -686,6 +687,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
+            byteps_sleep(10)
             if param.grad_req != 'null':
                 byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
