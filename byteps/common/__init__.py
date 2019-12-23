@@ -19,6 +19,7 @@ import ctypes
 import os
 import sysconfig
 import atexit
+from ..mxnet import delay
 
 
 def get_ext_suffix():
@@ -59,6 +60,7 @@ class BytePSBasics(object):
     def init(self):
         """A function that inits BytePS."""
         atexit.register(self.shutdown)
+        delayer = delay.Delayer()
         return self.C_LIB_CTYPES.byteps_init()
 
     def shutdown(self):

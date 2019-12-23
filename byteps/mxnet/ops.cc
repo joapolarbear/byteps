@@ -132,19 +132,22 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
   return;
 }
 
-void doSleep(void *pInt, void* on_complete_ptr, void* param) {
-  int delay = *static_cast<int *>(pInt);
-  std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000));
+void doSleep(void *, void* on_complete_ptr, void* _param) {
+  auto param = static_cast<PushPullParam*>(_param);
+  int delay = param->version;
+  // auto start = std::chrono::high_resolution_clock::now();
+  std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000 * 1000));
+  // auto end = std::chrono::high_resolution_clock::now();
+  // std::chrono::duration<double, std::milli> elapsed = end-start;
+  // std::cout << "Waited " << elapsed.count() << " ms\n";
 }
 
 extern "C" int byteps_mxnet_sleep(int delay) { 
   MX_API_BEGIN();
-  MXEnginePushAsync(doSleep, (void *)(&delay),
-                      nullptr, &MX_EXEC_CTX,
-                      nullptr, 0,
-                      nullptr, 0,
-                      &MX_FUNC_PROP, 0,
-                      "Sleep");
+  auto param = new PushPullParam(nullptr, nullptr, delay, 0);
+  MXEnginePushAsync(doSleep, param, DeletePushPullParam,
+                      &MX_EXEC_CTX, nullptr, 0, nullptr, 0,
+                      &MX_FUNC_PROP, 0, "Sleep");
   MX_API_END();
 }
 

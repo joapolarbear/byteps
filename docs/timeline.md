@@ -31,11 +31,11 @@ For example, below shows the profile result of a distributed training case (2 wo
 
 Use the following environment variables to enable profiling the operations runing on workers, including computation, communication operations: 
 
-``` python
-"BYTEPS_TRACE_ON" = "1"
-"BYTEPS_TRACE_END_STEP" = "20"
-"BYTEPS_TRACE_START_STEP"="10"
-"BYTEPS_TRACE_DIR"= "./traces"
+``` bash
+export "BYTEPS_TRACE_ON" = 1
+export "BYTEPS_TRACE_END_STEP" = 20
+export "BYTEPS_TRACE_START_STEP"= 10
+export "BYTEPS_TRACE_DIR"= "./traces"
 ```
 
 First `BYTEPS_TRACE_ON` should be set to `1` to enable profiling communication traces. `BYTEPS_TRACE_START_STEP` and `BYTEPS_TRACE_END_STEP` decides the step interval we want to profile, traces from step `BYTEPS_TRACE_START_STEP` to step `BYTEPS_TRACE_END_STEP` steps will be automatically collected and the result traces will be output in the chrome trace format. `BYTEPS_TRACE_DIR` denotes the path you want to store traces. 
@@ -145,3 +145,11 @@ Note that for BytePS, for multiple GPUs on one worker, only the root GPU is resp
 ### Overhead
 Below shows the latency when running [`bert_12_768_12`](https://github.com/joapolarbear/gluon-nlp/tree/bert-byteprofile/scripts/bert) model with 2 workers, each containing 2 V100 GPUs with 16GB of memory. BytePS Timeline collects traces during step 10 to step 20 and after step 20, it asynchronously outputs the trace results, which may also cause extra overhead. Ignoring the warm up time (the first 10 steps), the overhead induced by BytePS Timeline is small. 
 <img src="" width="1916">
+
+### Synthetic Delays
+Use the following two environment variables to set the delay time with the unit of `ms`.
+```bash
+export BYTEPS_TRACE_DELAY_COMM=10
+export BYTEPS_TRACE_DELAY_CMP=10
+```
+

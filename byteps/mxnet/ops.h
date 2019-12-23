@@ -39,6 +39,8 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* input, char* name,
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name);
 
+extern "C" int byteps_mxnet_sleep(int delay);
+
 }  // namespace mxnet
 }  // namespace byteps
 
