@@ -38,6 +38,8 @@
 #include <thread>
 #include <chrono>
 #include <queue>
+#include <unistd.h>
+#include <sys/time.h>
 
 namespace byteps {
 namespace common {

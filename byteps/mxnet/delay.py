@@ -27,15 +27,31 @@ from mxnet.ndarray import NDArray
 from mxnet.contrib.amp import lists
 from mxnet import base
 
+import ctypes
 import time
 import os
+import sysconfig
+def get_ext_suffix():
+    """Determine library extension for various versions of Python."""
+    ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
+    if ext_suffix:
+        return ext_suffix
+
+    ext_suffix = sysconfig.get_config_var('SO')
+    if ext_suffix:
+        return ext_suffix
+
+    return '.so'
+dll_path = os.path.join(os.path.dirname(__file__),
+                        'c_lib' + get_ext_suffix())
+MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 class Delayer:
     def __init__(self):
         _delay = os.getenv("BYTEPS_TRACE_DELAY_CMP", None)
         if _delay is None:
             return
-        self.SLEEP_TIME = float(_delay) / 1000.0
+        self.SLEEP_TIME = int(_delay * 1000)
         self._initialized = False
         if not self._initialized:
             self._initialized = True
@@ -44,6 +60,11 @@ class Delayer:
             self._wrap_symbol_functions(ndarray)
             self._wrap_loss_output_functions(ndarray)
             self._wrap_loss_output_functions(symbol)
+
+    def _do_sleep(self):
+        _s = time.time()
+        MXNET_LIB_CTYPES.byteps_cmp_sleep(ctypes.c_uint(self.SLEEP_TIME))
+        # print("ndarray: %s sleep for %f s" % (f.__name__, time.time() - _s))
 
     def _get_fun_to_wrap(self, name, module, submodule_dict):
         module_internal = getattr(module, "_internal")
@@ -65,8 +86,8 @@ class Delayer:
 
     def _wrap_symbol_functions(self, module):
         def _ndarray_wrapper(f):
-            def _new_fun(*args, **kwargs):
-                time.sleep(self.SLEEP_TIME)
+            def _new_fun(*args, **kwargs):  
+                self._do_sleep()
                 return f(*args, **kwargs)
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
@@ -75,7 +96,7 @@ class Delayer:
 
         def _symbol_wrapper(f):
             def _new_fun(*args, **kwargs):
-                time.sleep(self.SLEEP_TIME)
+                self._do_sleep()
                 return f(*args, **kwargs)
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
@@ -84,7 +105,7 @@ class Delayer:
 
         def _symbol_widest_wrapper(f):
             def _new_fun(*args, **kwargs):
-                time.sleep(self.SLEEP_TIME)
+                self._do_sleep()
                 return f(*args, **kwargs)
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
@@ -98,9 +119,7 @@ class Delayer:
             submodule_dict[op_name_prefix] =\
                     getattr(module, op_name_prefix[1:-1])
 
-        wrap_list = target_precision_ops if target_precision_ops is not None \
-                        else lists.symbol.FP16_FUNCS
-        for fun_name in wrap_list:
+        for fun_name in lists.symbol.FP16_FUNCS:
             try:
                 fun_name, cur_module = self._get_fun_to_wrap(fun_name, module, submodule_dict)
                 f_to_wrap = getattr(cur_module, fun_name)
@@ -110,8 +129,7 @@ class Delayer:
             except AttributeError:
                 pass
 
-        wrap_list = fp32_ops if fp32_ops is not None else lists.symbol.FP32_FUNCS
-        for fun_name in wrap_list:
+        for fun_name in lists.symbol.FP32_FUNCS:
             try:
                 fun_name, cur_module = self._get_fun_to_wrap(fun_name, module, submodule_dict)
                 f_to_wrap = getattr(cur_module, fun_name)
@@ -122,9 +140,7 @@ class Delayer:
                 pass
 
         #! TODO(huhanpeng) do not apply sleep functions for conditional_fp32_ops, e.g., 'Activation', 'act_type', ['softrelu']),
-        # wrap_list = conditional_fp32_ops if conditional_fp32_ops is not None \
-        #                 else lists.symbol.CONDITIONAL_FP32_FUNCS
-        # for fun_name, arg, arg_values in wrap_list:
+        # for fun_name, arg, arg_values in lists.symbol.CONDITIONAL_FP32_FUNCS:
         #     try:
         #         fun_name, cur_module = self._get_fun_to_wrap(fun_name, module, submodule_dict)
         #         f_to_wrap = getattr(cur_module, fun_name)
@@ -149,7 +165,7 @@ class Delayer:
         if module == ndarray:
             def _wrapper(f):
                 def _scaling_wrapper(*args, **kwargs):
-                    time.sleep(self.SLEEP_TIME)
+                    self._do_sleep()
                     return f(*args, **kwargs)
                 _scaling_wrapper.__name__ = f.__name__
                 _scaling_wrapper.__module__ = f.__module__
@@ -160,7 +176,7 @@ class Delayer:
                 def _warning_wrapper(*args, **kwargs):
                     logging.warning("%s does not support dynamic loss scaling "
                                     "in symbolic and hybridized execution.", f.__name__)
-                    time.sleep(self.SLEEP_TIME)
+                    self._do_sleep()
                     return f(*args, **kwargs)
                 _warning_wrapper.__name__ = f.__name__
                 _warning_wrapper.__module__ = f.__module__

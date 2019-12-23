@@ -69,6 +69,8 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
 
+void gpu_uSleep(useconds_t wait_time_in_ms);
+
 }  // namespace common
 }  // namespace byteps
 

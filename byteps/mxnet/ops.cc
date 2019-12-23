@@ -151,5 +151,10 @@ extern "C" int byteps_mxnet_sleep(int delay) {
   MX_API_END();
 }
 
+extern "C" void byteps_cmp_sleep(useconds_t delay) {
+  common::gpu_uSleep(delay);
+  return;
+}
+
 }  // namespace mxnet
 }  // namespace byteps

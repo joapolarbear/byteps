@@ -378,5 +378,11 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
   return queue_list;
 }
 
+void gpu_uSleep(useconds_t wait_time_in_ms)
+{
+    usleep(wait_time_in_ms);
+    return;
+}
+
 }  // namespace common
 }  // namespace byteps
