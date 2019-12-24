@@ -31,6 +31,7 @@ std::atomic_int op_count;
 const auto MX_EXEC_CTX = Context::CPU();
 const auto MX_FUNC_PROP = FnProperty::kCPUPrioritized;
 const auto MX_GPU_CTX = Context::GPU(byteps_local_rank());
+const auto MX_GPU_PROP = FnProperty::kNormal;
 
 // struct to hold parameters for pushpull with MXNet Engine
 struct PushPullParam {
@@ -146,17 +147,17 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
 extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device) { 
   MX_API_BEGIN();
   auto param = new PushPullParam(nullptr, nullptr, delay, 0);
-  auto var = tensor->var();
   if (gpu_device){
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
-                      &MX_GPU_CTX, nullptr, 0, &var, 1,
-                      &MX_FUNC_PROP, 0, "Sleep");
+                      &MX_GPU_CTX, nullptr, 0, nullptr, 0,
+                      &MX_GPU_PROP, 0, "Sleep");
   }
   else{
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
-                      &MX_EXEC_CTX, nullptr, 0, &var, 1,
+                      &MX_EXEC_CTX, nullptr, 0, nullptr, 0,
                       &MX_FUNC_PROP, 0, "Sleep");
   }
+  
   MX_API_END();
 }
 
