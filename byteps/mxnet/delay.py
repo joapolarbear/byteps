@@ -62,11 +62,12 @@ class Delayer:
             self._wrap_loss_output_functions(ndarray)
             self._wrap_loss_output_functions(symbol)
 
-    def _do_sleep(self, f, name="symbol"):
+    def _do_sleep(self, f, out=None, name="symbol"):
         _s = time.time()
-        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self.SLEEP_TIME), ctypes.c_bool(1))
+        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self.SLEEP_TIME), ctypes.c_bool(1), out.handle)
         # time.sleep(self.SLEEP_TIME / 1000.0)
         # print("%s: %s sleep for %f s" % (name, f.__name__, time.time() - _s))
+        return out
 
     def _get_fun_to_wrap(self, name, module, submodule_dict):
         module_internal = getattr(module, "_internal")
@@ -88,9 +89,9 @@ class Delayer:
 
     def _wrap_symbol_functions(self, module):
         def _ndarray_wrapper(f):
-            def _new_fun(*args, **kwargs):  
-                self._do_sleep(f, name="ndarray")
-                return f(*args, **kwargs)
+            def _new_fun(*args, **kwargs):
+                _out = f(*args, **kwargs)
+                return self._do_sleep(f, _out, name="ndarray")
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
             _new_fun.__doc__ = f.__doc__
@@ -98,7 +99,7 @@ class Delayer:
 
         def _symbol_wrapper(f):
             def _new_fun(*args, **kwargs):
-                self._do_sleep(f)
+                # self._do_sleep(f)
                 return f(*args, **kwargs)
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
@@ -107,7 +108,7 @@ class Delayer:
 
         def _symbol_widest_wrapper(f):
             def _new_fun(*args, **kwargs):
-                self._do_sleep(f)
+                # self._do_sleep(f)
                 return f(*args, **kwargs)
             _new_fun.__name__ = f.__name__
             _new_fun.__module__ = f.__module__
@@ -167,7 +168,7 @@ class Delayer:
         if module == ndarray:
             def _wrapper(f):
                 def _scaling_wrapper(*args, **kwargs):
-                    self._do_sleep(f, name="ndarray")
+                    # self._do_sleep(f, name="ndarray")
                     return f(*args, **kwargs)
                 _scaling_wrapper.__name__ = f.__name__
                 _scaling_wrapper.__module__ = f.__module__
@@ -178,7 +179,7 @@ class Delayer:
                 def _warning_wrapper(*args, **kwargs):
                     logging.warning("%s does not support dynamic loss scaling "
                                     "in symbolic and hybridized execution.", f.__name__)
-                    self._do_sleep(f)
+                    # self._do_sleep(f)
                     return f(*args, **kwargs)
                 _warning_wrapper.__name__ = f.__name__
                 _warning_wrapper.__module__ = f.__module__
