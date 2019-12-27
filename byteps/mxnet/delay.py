@@ -50,6 +50,7 @@ MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 class Delayer:
     def __init__(self):
         _delay = os.getenv("BYTEPS_TRACE_DELAY_CMP", None)
+        return 
         if _delay is None:
             return
         self.SLEEP_TIME = int(_delay * 1)
@@ -193,5 +194,19 @@ class Delayer:
             except AttributeError:
                 pass
 
+import mxnet
+class SleepBlock(mxnet.gluon.nn.HybridBlock):
+    def __init__(self):
+        super(SleepBlock, self).__init__()
+        _delay = os.getenv("BYTEPS_TRACE_DELAY_CMP", None)
+        self._delay = int(_delay) if _delay is not None else 0
+
+    def hybrid_forward(self, F, x):
+        ''' 
+            x: mxnet.symbol.symbol.Symbol (the first time) or mxnet...ndarray
+        '''
+        # raise NotImplementedError()
+        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self._delay), ctypes.c_bool(1))
+        return x
 
 

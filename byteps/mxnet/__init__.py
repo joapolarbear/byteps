@@ -683,6 +683,18 @@ class DistributedTrainer(mx.gluon.Trainer):
         #     for cld in _block._children.values():
         #         register_sleep_hook(cld)
         # register_sleep_hook(self.recorder.block)
+        from collections import OrderedDict
+        from byteps.mxnet.delay import SleepBlock
+        def register_sleep_block(_block):
+            if len(_block._children) == 0:
+                return
+            _cld = OrderedDict()
+            for name, cld in _block._children.items():
+                register_sleep_block(cld)
+                _cld[name] = cld
+                _cld[name+"_sleep"] = SleepBlock()
+            _block._children = _cld
+        register_sleep_block(self.recorder.block)
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(

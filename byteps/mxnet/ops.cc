@@ -144,13 +144,12 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
   std::cout << "Waited " << elapsed.count() << " ms\n";
 }
 
-extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device, NDArray* tensor) { 
+extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device) { 
   MX_API_BEGIN();
   auto param = new PushPullParam(nullptr, nullptr, delay, 0);
   if (gpu_device){
-    auto var = tensor->var();
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
-                      &MX_GPU_CTX, nullptr, 0, &var, 1,
+                      &MX_GPU_CTX, nullptr, 0, nullptr, 0,
                       &MX_GPU_PROP, 1, "Sleep");
   }
   else{
