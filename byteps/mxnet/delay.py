@@ -201,7 +201,7 @@ class SleepBlock(mxnet.gluon.nn.HybridBlock):
         _delay = os.getenv("BYTEPS_TRACE_DELAY_CMP", None)
         self._delay = int(_delay) if _delay is not None else 0
 
-    def hybrid_forward(self, F, x):
+    def hybrid_forward(self, F, x, *args, **kwargs):
         ''' 
             x: mxnet.symbol.symbol.Symbol (the first time) or mxnet...ndarray
         '''

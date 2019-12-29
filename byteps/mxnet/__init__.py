@@ -687,13 +687,17 @@ class DistributedTrainer(mx.gluon.Trainer):
         from byteps.mxnet.delay import SleepBlock
         def register_sleep_block(_block):
             if len(_block._children) == 0:
-                return
+                return 0
             _cld = OrderedDict()
+            layer_num = 0
             for name, cld in _block._children.items():
-                register_sleep_block(cld)
+                layer_num = max(layer_num, register_sleep_block(cld) + 1)
                 _cld[name] = cld
                 _cld[name+"_sleep"] = SleepBlock()
-            _block._children = _cld
+            if layer_num == 1 and isinstance(_block, mx.gluon.nn.HybridSequential):
+                print(_block)
+                _block._children = _cld
+            return layer_num
         register_sleep_block(self.recorder.block)
         self.imported_net = None
 
