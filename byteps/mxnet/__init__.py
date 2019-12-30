@@ -223,6 +223,14 @@ class Recorder(object):
             trace["args"]["input0"] = list(input_nodes)[0]
             self.time_dict["traceEvents"].append(trace)
 
+    def byteps_collect_update(self):
+        def update_ready():
+            return os.path.exists(os.path.join(self.trace_dir, "update.json"))
+        self.wait_for_trace(update_ready, "UPDATE")
+        with open(os.path.join(self.trace_dir, "update.json"), 'r') as f:
+            rst_traces = json.load(f)
+        self.time_dict["traceEvents"] += rst_traces["traceEvents"]
+
     def save_trace(self):
         ''' Output trace resutls '''
         with open(self.trace_dir + 'temp.json', 'r') as f:
@@ -244,7 +252,8 @@ class Recorder(object):
 
         #! Collect communication traces, IO traces and STEP traces and apply dependency
         self.byteps_collect_io()
-        self.byteps_collect_comm() 
+        self.byteps_collect_comm()
+        self.byteps_collect_update() 
 
         #! Combine two kinds of trace and output them
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
@@ -671,6 +680,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
         self.imported_net = None
 
+        from byteps.mxnet.mx_wrapper import TimtLineRecorder
+        self.update_recorder = TimtLineRecorder("update.json", "UPDATE")
+
         super(DistributedTrainer, self).__init__(
             params, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
@@ -709,3 +721,44 @@ class DistributedTrainer(mx.gluon.Trainer):
                 param_arrays[0].wait_to_read()
 
         self._params_to_init = tensors
+
+    def _update(self, ignore_stale_grad=False):
+        self.update_recorder.start()
+
+        updates = [[] for _ in self._updaters]
+        for i, param in enumerate(self._params):
+            if param.grad_req == 'null':
+                continue
+
+            if not ignore_stale_grad:
+                for data in param._check_and_get(param._data, list):
+                    if not data._fresh_grad:
+                        raise UserWarning(
+                            "Gradient of Parameter `%s` on context %s has not been updated "
+                            "by backward since last `step`. This could mean a bug in your "
+                            "model that made it only use a subset of the Parameters (Blocks) "
+                            "for this iteration. If you are intentionally only using a subset, "
+                            "call step with ignore_stale_grad=True to suppress this "
+                            "warning and skip updating of Parameters with stale gradient" \
+                            %(param.name, str(data.context)))
+
+            if self._kvstore and self._update_on_kvstore:
+                if param._stype == 'default':
+                    # 'row_sparse' parameters are not pulled immediately - they're pulled
+                    # in `Block.forward`
+                    self._kvstore.pull(i, param.list_data(), priority=-i)
+                continue
+
+            for upd, arr, grad in zip(updates, param.list_data(), param.list_grad()):
+                if not ignore_stale_grad or arr._fresh_grad:
+                    upd.append((i, grad, arr))
+                    arr._fresh_grad = False
+
+        if not (self._kvstore and self._update_on_kvstore):
+            for updater, upd in zip(self._updaters, updates):
+                if upd:
+                    i, w, g = zip(*upd)
+                    if not isinstance(updater, mx.optimizer.optimizer.Updater):
+                        print(updater)
+                    updater(i, w, g)
+        self.update_recorder.end()
