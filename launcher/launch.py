@@ -50,7 +50,7 @@ def worker(local_rank, local_size, command):
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
 
-    if local_rank == 0:
+    if os.environ.get("BYTEPS_TRACE_DELAY_CMP", '0') == '1' and os.getenv("DMLC_WORKER_ID", None) == 0:
         WORKLOAD = 1
         for i in range(WORKLOAD):
             subprocess.check_call("python3 /usr/local/byteps/example/mxnet-gluon/train_mnist_byteps.py \
