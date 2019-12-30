@@ -157,11 +157,12 @@ for epoch in range(args.epochs):
         loss.backward()
         trainer.step(args.batch_size)
         metric.update([label], [output])
-
+        '''
         if i % 100 == 0:
             name, acc = metric.get()
             logging.info('[Epoch %d Batch %d] Training: %s=%f' %
                          (epoch, i, name, acc))
+        '''
 
     log_flag = (backend == "byteps" and bps.rank() == 0) or backend != "byteps"
     if log_flag:

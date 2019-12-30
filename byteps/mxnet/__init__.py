@@ -669,16 +669,6 @@ class DistributedTrainer(mx.gluon.Trainer):
             raise ValueError("`block` must be given to define DistributedTrainer")
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
-        def delay_synthetic(*args, **kwargs):
-            time.sleep(0.1)
-
-        def apply_delay4leaf(_name, _block):
-            if(len(_block._children) == 0):
-                _block.register_forward_hook(delay_synthetic)
-                return
-            for name, cld in _block._children.items():
-                apply_delay4leaf(name, cld)
-        apply_delay4leaf(None, self.recorder.block)
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(

@@ -18,10 +18,6 @@
 #include "global.h"
 #include "logging.h"
 
-// synthetic
-#include <thread>
-#include <chrono>
-
 namespace byteps {
 namespace common {
 
