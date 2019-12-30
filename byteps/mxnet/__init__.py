@@ -671,18 +671,26 @@ class DistributedTrainer(mx.gluon.Trainer):
             raise ValueError("`block` must be given to define DistributedTrainer")
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
-        # def delay_synthetic(*args, **kwargs):
-        #     print("hhh")
-        #     byteps_sleep(10)
-        #     # time.sleep(0.01)
-        # # self.recorder.block.register_op_hook(delay_synthetic, monitor_all=False)
-        # def register_sleep_hook(_block):
-        #     if len(_block._children) == 0:
-        #         _block.register_forward_hook(delay_synthetic)
-        #         return
-        #     for cld in _block._children.values():
-        #         register_sleep_hook(cld)
-        # register_sleep_hook(self.recorder.block)
+
+        def delay_synthetic(*args, **kwargs):
+            print("hhh")
+            byteps_sleep(10)
+            # time.sleep(0.01)
+        def mon_callback(node_name, opr_name, arr):
+            print(node_name)
+            print(opr_name)
+
+        def register_sleep_hook(_block):
+            if len(_block._children) == 0:
+                _block.register_op_hook(mon_callback, monitor_all=False)
+                return
+            for cld in _block._children.values():
+                register_sleep_hook(cld)
+        register_sleep_hook(self.recorder.block)
+
+        
+        # self.recorder.block.register_op_hook(mon_callback, monitor_all=False)
+        '''
         from collections import OrderedDict
         from byteps.mxnet.delay import SleepBlock
         def register_sleep_block(_block):
@@ -699,6 +707,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 _block._children = _cld
             return layer_num
         register_sleep_block(self.recorder.block)
+        '''
         self.imported_net = None
 
         super(DistributedTrainer, self).__init__(

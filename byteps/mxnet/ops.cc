@@ -137,11 +137,7 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
 void doSleep(void *, void* on_complete_ptr, void* _param) {
   auto param = static_cast<PushPullParam*>(_param);
   int delay = param->version;
-  auto start = std::chrono::high_resolution_clock::now();
   std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000 * 1000));
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> elapsed = end-start;
-  std::cout << "Waited " << elapsed.count() << " ms\n";
 }
 
 extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device) { 
