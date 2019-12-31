@@ -52,6 +52,7 @@ def worker(local_rank, local_size, command):
 
     if os.environ.get("BYTEPS_TRACE_DELAY_CMP", '0') == '1' and os.getenv("DMLC_WORKER_ID", None) == 0:
         WORKLOAD = 1
+        print("Add additional workload to add delay.")
         for i in range(WORKLOAD):
             subprocess.check_call("python3 /usr/local/byteps/example/mxnet-gluon/train_mnist_byteps.py \
                             --epochs 10000 \
