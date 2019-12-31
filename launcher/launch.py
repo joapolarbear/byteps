@@ -50,7 +50,7 @@ def worker(local_rank, local_size, command):
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
 
-    if os.environ.get("BYTEPS_TRACE_DELAY_CMP", '0') == '1' and os.getenv("DMLC_WORKER_ID", None) == 0:
+    if os.environ.get("BYTEPS_TRACE_DELAY_CMP", '0') == '1' and os.getenv("DMLC_WORKER_ID", None) == "0":
         WORKLOAD = 1
         print("Add additional workload to add delay.")
         for i in range(WORKLOAD):
