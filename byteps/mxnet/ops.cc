@@ -144,6 +144,9 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
 
   std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000 * 1000));
 
+  auto p = (char *)(input->data());
+  p[0] = p[0];
+
   if (is_log == 1) {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end-start;
