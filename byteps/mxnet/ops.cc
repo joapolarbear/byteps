@@ -138,13 +138,14 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
   auto param = static_cast<PushPullParam*>(_param);
   int delay = param->version;
   NDArray* input = param->input;
+  auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
   int is_log = param->priority;
 
   auto start = std::chrono::high_resolution_clock::now();
 
   std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000 * 1000));
 
-  auto p = (char *)(input->data());
+  auto p = (char *)(byteps_input->data());
   p[0] = p[0];
 
   if (is_log == 1) {
