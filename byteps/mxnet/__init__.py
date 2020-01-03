@@ -672,6 +672,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
 
+        '''
         def delay_synthetic(*args, **kwargs):
             print("hhh")
             byteps_sleep(10)
@@ -687,6 +688,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             for cld in _block._children.values():
                 register_sleep_hook(cld)
         register_sleep_hook(self.recorder.block)
+        '''
 
         
         # self.recorder.block.register_op_hook(mon_callback, monitor_all=False)
@@ -725,6 +727,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
+                byteps_sleep(10, param.list_grad()[0], is_gpu=False)
             # check whether to collect traces
             if self.recorder.scheduler(i, (True if i == 0 else False)) and param.grad_req != 'null':
                 self.recorder.end4index(i, param.list_grad()[0], "gradient_" + str(i))

@@ -137,12 +137,24 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
 void doSleep(void *, void* on_complete_ptr, void* _param) {
   auto param = static_cast<PushPullParam*>(_param);
   int delay = param->version;
+  NDArray* input = param->input;
+  int is_log = param->priority;
+
+  auto start = std::chrono::high_resolution_clock::now();
+
   std::this_thread::sleep_for(std::chrono::nanoseconds(delay * 1000 * 1000));
+
+  if (is_log == 1) {
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end-start;
+    std::cout << "Waited " << elapsed.count() << " ms\n" << std::flush;
+  }
 }
 
-extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device) { 
+extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device, NDArray* tensor, int is_log) { 
   MX_API_BEGIN();
-  auto param = new PushPullParam(nullptr, nullptr, delay, 0);
+  auto param = new PushPullParam(nullptr, tensor, delay, is_log);
+  auto var = tensor->var();
   if (gpu_device){
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
                       &MX_GPU_CTX, nullptr, 0, nullptr, 0,
@@ -150,7 +162,7 @@ extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device) {
   }
   else{
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
-                      &MX_EXEC_CTX, nullptr, 0, nullptr, 0,
+                      &MX_EXEC_CTX, nullptr, 0, &var, 1,
                       &MX_FUNC_PROP, 0, "Sleep");
   }
   

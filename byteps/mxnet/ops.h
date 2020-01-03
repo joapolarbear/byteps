@@ -39,7 +39,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* input, char* name,
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name);
 
-extern "C" int byteps_mxnet_sleep(int delay, bool local_rank);
+extern "C" int byteps_mxnet_sleep(int delay, bool local_rank, NDArray* tensor, int is_log);
 
 extern "C" void byteps_cmp_sleep(useconds_t delay);
 
