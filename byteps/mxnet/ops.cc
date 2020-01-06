@@ -135,6 +135,7 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
 }
 
 void doSleep(void *, void* on_complete_ptr, void* _param) {
+  auto on_complete = *static_cast<Callback*>(on_complete_ptr);
   auto param = static_cast<PushPullParam*>(_param);
   int delay = param->version;
   NDArray* input = param->input;
@@ -150,6 +151,7 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
     std::chrono::duration<double, std::milli> elapsed = end-start;
     std::cout << "Waited " << elapsed.count() << " ms\n" << std::flush;
   }
+  on_complete()
 }
 
 extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device, NDArray* tensor, int is_log) { 
