@@ -151,7 +151,7 @@ void doSleep(void *, void* on_complete_ptr, void* _param) {
     std::chrono::duration<double, std::milli> elapsed = end-start;
     std::cout << "Waited " << elapsed.count() << " ms\n" << std::flush;
   }
-  on_complete()
+  on_complete();
 }
 
 extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device, NDArray* tensor, int is_log) { 
