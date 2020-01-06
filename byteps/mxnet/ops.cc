@@ -160,7 +160,7 @@ extern "C" int byteps_mxnet_sleep(int delay, bool gpu_device, NDArray* tensor, i
   auto var = tensor->var();
   if (gpu_device){
     MXEnginePushAsync(doSleep, param, DeletePushPullParam,
-                      &MX_GPU_CTX, nullptr, 0, nullptr, 0,
+                      &MX_GPU_CTX, nullptr, 0, &var, 1,
                       &MX_GPU_PROP, 1, "Sleep");
   }
   else{

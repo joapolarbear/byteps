@@ -672,25 +672,17 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.recorder.block = block
         self.recorder.loss = kwargs["loss"] if "loss" in kwargs else None
 
-        '''
-        def delay_synthetic(*args, **kwargs):
-            print("hhh")
-            byteps_sleep(10)
-            # time.sleep(0.01)
-        def mon_callback(node_name, opr_name, arr):
-            print(node_name)
-            print(opr_name)
+        def delay_synthetic(_node_name, _op_name, _NDArrayHandle):
+            byteps_sleep(10, _NDArrayHandle, is_gpu=True)
 
         def register_sleep_hook(_block):
             if len(_block._children) == 0:
-                _block.register_op_hook(mon_callback, monitor_all=False)
+                _block.register_op_hook(delay_synthetic, monitor_all=False)
                 return
             for cld in _block._children.values():
                 register_sleep_hook(cld)
         register_sleep_hook(self.recorder.block)
-        '''
 
-        
         # self.recorder.block.register_op_hook(mon_callback, monitor_all=False)
         '''
         from collections import OrderedDict
@@ -727,7 +719,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                byteps_sleep(10, param.list_grad()[0], is_gpu=False)
+                # byteps_sleep(10, param.list_grad()[0], is_gpu=False)
             # check whether to collect traces
             if self.recorder.scheduler(i, (True if i == 0 else False)) and param.grad_req != 'null':
                 self.recorder.end4index(i, param.list_grad()[0], "gradient_" + str(i))

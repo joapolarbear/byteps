@@ -81,7 +81,12 @@ def byteps_declare_tensor(tensor, name):
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(tensor.handle, c_str(name)))
 
 def byteps_sleep(delay, tensor, is_gpu=False):
-    c_in = tensor.handle
+    if isinstance(tensor, mx.ndarray.NDArray):
+        c_in = tensor.handle
+    elif isinstance(tensor, mx.ndarray.handle):
+        c_in = tensor
+    else:
+        raise ValueError("The tensor type is : %s" % (type(tensor)))
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(int(delay)), ctypes.c_bool(is_gpu), c_in, ctypes.c_int(_islog)))
 
 
