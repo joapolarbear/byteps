@@ -47,10 +47,11 @@ dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
+_islog = int(os.getenv("BYTEPS_TRACE_DELAY_LOG", 0))
+
 class Delayer:
     def __init__(self):
         _delay = os.getenv("BYTEPS_TRACE_DELAY_CMP", None)
-        return 
         if _delay is None:
             return
         self.SLEEP_TIME = int(_delay * 1)
@@ -62,15 +63,17 @@ class Delayer:
             self._wrap_symbol_functions(ndarray)
             self._wrap_loss_output_functions(ndarray)
             self._wrap_loss_output_functions(symbol)
+            # self._naive_wrap(symbol)
+            # self._naive_wrap(ndarray)
 
-    def _do_sleep(self, f, out=None, name="symbol"):
+    def _do_sleep(self, f, out=None, name="ndarray"):
         _s = time.time()
-        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self.SLEEP_TIME), ctypes.c_bool(1), out.handle)
+        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self.SLEEP_TIME), ctypes.c_bool(True), out.handle, _islog)
         # time.sleep(self.SLEEP_TIME / 1000.0)
         # print("%s: %s sleep for %f s" % (name, f.__name__, time.time() - _s))
         return out
 
-    def _get_fun_to_wrap(self, name, module, submodule_dict):
+    def _get_fun_to_wrap(self, name, module, submodule_dict=None):
         module_internal = getattr(module, "_internal")
         prefix = base._get_op_name_prefix(name)
         if len(prefix) > 0:
@@ -88,35 +91,74 @@ class Delayer:
             cur_module = module
         return func_name, cur_module
 
-    def _wrap_symbol_functions(self, module):
-        def _ndarray_wrapper(f):
-            def _new_fun(*args, **kwargs):
-                _out = f(*args, **kwargs)
+    def _naive_wrap(self, module):
+        symbol_list = []
+        for _m in dir(module):
+            if _m not in ['Symbol', 'NDArray', 'Variable'] and _m[0] >= 'A' and _m[0] <= 'Z':
+                symbol_list.append(_m)
+
+        _wrapper = self._symbol_wrapper if module in (symbol, Symbol, symbol_contrib) else self._ndarray_wrapper
+        submodule_dict = {}
+        for op_name_prefix in base._OP_NAME_PREFIX_LIST:
+            submodule_dict[op_name_prefix] =\
+                    getattr(module, op_name_prefix[1:-1])
+        for fun_name in symbol_list:
+            try:
+                fun_name, cur_module = self._get_fun_to_wrap(fun_name, module, submodule_dict)
+                f_to_wrap = getattr(cur_module, fun_name)
+                setattr(cur_module, fun_name, _wrapper(f_to_wrap))
+                if cur_module == module:
+                    setattr(module.op, fun_name, _wrapper(f_to_wrap))
+            except AttributeError:
+                pass
+  
+    def _ndarray_wrapper(self, f):
+        def _new_fun(*args, **kwargs):
+            _out = f(*args, **kwargs)
+            if isinstance(_out, NDArray):
                 return self._do_sleep(f, _out, name="ndarray")
-            _new_fun.__name__ = f.__name__
-            _new_fun.__module__ = f.__module__
-            _new_fun.__doc__ = f.__doc__
-            return _new_fun
+            elif isinstance(_out, Symbol):
+                return _out
+            else:
+                # raise ValueError("The type of %s's output is %s" % (f.__name__, type(_out)))
+                pass
+        _new_fun.__name__ = f.__name__
+        _new_fun.__module__ = f.__module__
+        _new_fun.__doc__ = f.__doc__
+        return _new_fun
 
-        def _symbol_wrapper(f):
-            def _new_fun(*args, **kwargs):
-                # self._do_sleep(f)
-                return f(*args, **kwargs)
-            _new_fun.__name__ = f.__name__
-            _new_fun.__module__ = f.__module__
-            _new_fun.__doc__ = f.__doc__
-            return _new_fun
+    def _symbol_wrapper(self, f):
+        def _new_fun(*args, **kwargs):
+            _out = f(*args, **kwargs)
+            if isinstance(_out, NDArray):
+                return self._do_sleep(f, _out, name="ndarray")
+            elif isinstance(_out, Symbol):
+                return _out
+            else:
+                # raise ValueError("The type of %s's output is %s" % (f.__name__, type(_out)))
+                pass
+        _new_fun.__name__ = f.__name__
+        _new_fun.__module__ = f.__module__
+        _new_fun.__doc__ = f.__doc__
+        return _new_fun
 
-        def _symbol_widest_wrapper(f):
-            def _new_fun(*args, **kwargs):
-                # self._do_sleep(f)
-                return f(*args, **kwargs)
-            _new_fun.__name__ = f.__name__
-            _new_fun.__module__ = f.__module__
-            _new_fun.__doc__ = f.__doc__
-            return _new_fun
+    def _symbol_widest_wrapper(self, f):
+        def _new_fun(*args, **kwargs):
+            _out = f(*args, **kwargs)
+            if isinstance(_out, NDArray):
+                return self._do_sleep(f, _out, name="ndarray")
+            elif isinstance(_out, Symbol):
+                return _out
+            else:
+                # raise ValueError("The type of %s's output is %s" % (f.__name__, type(_out)))
+                pass
+        _new_fun.__name__ = f.__name__
+        _new_fun.__module__ = f.__module__
+        _new_fun.__doc__ = f.__doc__
+        return _new_fun
 
-        _wrapper = _symbol_wrapper if module in (symbol, Symbol, symbol_contrib) else _ndarray_wrapper
+    def _wrap_symbol_functions(self, module):
+        _wrapper = self._symbol_wrapper if module in (symbol, Symbol, symbol_contrib) else self._ndarray_wrapper
 
         submodule_dict = {}
         for op_name_prefix in base._OP_NAME_PREFIX_LIST:
@@ -195,6 +237,7 @@ class Delayer:
                 pass
 
 import mxnet
+
 class SleepBlock(mxnet.gluon.nn.HybridBlock):
     def __init__(self):
         super(SleepBlock, self).__init__()
@@ -206,7 +249,7 @@ class SleepBlock(mxnet.gluon.nn.HybridBlock):
             x: mxnet.symbol.symbol.Symbol (the first time) or mxnet...ndarray
         '''
         # raise NotImplementedError()
-        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self._delay), ctypes.c_bool(1))
+        MXNET_LIB_CTYPES.byteps_mxnet_sleep(ctypes.c_int(self._delay), ctypes.c_bool(True), x, ctypes.c_int(_islog))
         return x
 
 
