@@ -45,7 +45,7 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
-parser.add_argument('--backend', type=str, default="byteps",
+parser.add_argument('--backend', type=str, default="device",
                     help='backend')
 parser.add_argument('--gpu', type=int, default=None,
                     help='gpu to run')
