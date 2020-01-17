@@ -223,6 +223,10 @@ class Recorder(object):
             trace["args"]["input0"] = list(input_nodes)[0]
             self.time_dict["traceEvents"].append(trace)
 
+        with open(os.path.join(self.trace_dir, "gradient_name_list.txt"), "w") as f:
+            for s in self.gradient_name_list:
+                f.write(str(s) + "\n")
+
     def save_trace(self):
         ''' Output trace resutls '''
         with open(self.trace_dir + 'temp.json', 'r') as f:
@@ -305,7 +309,8 @@ class Recorder(object):
 
         IGNORE_OP = ["DeleteVariable", "sum", "_plus_scalar", 
                 "_copyto_GPU2GPU", "broadcast_add", 
-                "Reshape", "Cast", "_arange", "elemwise_add"]
+                "Reshape", "Cast", "_arange", "elemwise_add",
+                "_ones", "SyncCopyGPU2CPU", "_mul_scalar"]
 
         def real_last_bw_name():
             statue = "init"
