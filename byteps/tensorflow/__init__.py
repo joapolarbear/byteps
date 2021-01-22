@@ -29,6 +29,7 @@ from byteps.tensorflow.util import _executing_eagerly
 import tensorflow as tf
 import os, sys
 from tensorflow.python.ops import control_flow_ops
+from byteps.tensorflow.recorder import TimelineHook
 
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
               compression=Compression.none, enable_async=False):
